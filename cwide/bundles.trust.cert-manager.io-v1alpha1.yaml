@@ -1,0 +1,2 @@
+ConfigMap Target                                 Secret Target                                    Synced                                           Reason                                           Age                                              
+.spec.target.configMap.key                       .spec.target.secret.key                          .status.conditions[?(@.type == "Synced")].status .status.conditions[?(@.type == "Synced")].reason .metadata.creationTimestamp                      

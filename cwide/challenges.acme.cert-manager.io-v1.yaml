@@ -1,0 +1,2 @@
+State                       Domain                      Reason                      Age                         
+.status.state               .spec.dnsName               .status.reason              .metadata.creationTimestamp 

@@ -1,0 +1,2 @@
+Endpoint                                       Ready                                          Status                                         Age                                            
+.spec.endpoint                                 .status.conditions[?(@.type=="Ready")].status  .status.conditions[?(@.type=="Ready")].message .metadata.creationTimestamp                    

@@ -1,0 +1,2 @@
+Cluster                     State                       Age                         
+.spec.backedUpClusterName   .status.state               .metadata.creationTimestamp 

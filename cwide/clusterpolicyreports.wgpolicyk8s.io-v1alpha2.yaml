@@ -1,0 +1,2 @@
+Kind                        Name                        Pass                        Fail                        Warn                        Error                       Skip                        Age                         
+.scope.kind                 .scope.name                 .summary.pass               .summary.fail               .summary.warn               .summary.error              .summary.skip               .metadata.creationTimestamp 

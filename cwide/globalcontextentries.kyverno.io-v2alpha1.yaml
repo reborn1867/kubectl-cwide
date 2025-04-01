@@ -1,0 +1,2 @@
+READY                                           AGE                                             REFRESH INTERVAL                                LAST REFRESH                                    
+.status.conditions[?(@.type == "Ready")].status .metadata.creationTimestamp                     .spec.apiCall.refreshInterval                   .status.lastRefreshTime                         

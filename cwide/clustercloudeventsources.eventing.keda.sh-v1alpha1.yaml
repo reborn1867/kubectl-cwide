@@ -1,0 +1,2 @@
+Active                                         
+.status.conditions[?(@.type=="Active")].status 

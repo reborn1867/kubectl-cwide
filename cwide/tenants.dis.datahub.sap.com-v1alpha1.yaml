@@ -1,0 +1,2 @@
+State                       Cluster                     Plan                        SpecVersion                 Version                     Age                         
+.status.state               .spec.clusterID             .spec.planName              .spec.version               .status.version             .metadata.creationTimestamp 

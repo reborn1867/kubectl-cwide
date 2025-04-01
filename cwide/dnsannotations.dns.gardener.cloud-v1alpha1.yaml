@@ -1,0 +1,2 @@
+RefGroup                     RefKind                      RefName                      RefNamespace                 Active                       Age                          
+.spec.resourceRef.apiVersion .spec.resourceRef.kind       .spec.resourceRef.name       .spec.resourceRef.namespace  .status.active               .metadata.creationTimestamp  

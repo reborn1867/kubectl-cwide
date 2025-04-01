@@ -1,0 +1,2 @@
+Status                      Started                     Bytes Done                  Total Bytes                 Storage Location            Age                         Node                        
+.status.phase               .status.startTimestamp      .status.progress.bytesDone  .status.progress.totalBytes .spec.backupStorageLocation .metadata.creationTimestamp .status.node                

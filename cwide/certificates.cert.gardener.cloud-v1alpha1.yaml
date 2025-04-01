@@ -1,0 +1,2 @@
+COMMON NAME                 ISSUER                      STATUS                      EXPIRATION_DATE             DNS_NAMES                   AGE                         
+.status.commonName          .status.issuerRef.name      .status.state               .status.expirationDate      .status.dnsNames            .metadata.creationTimestamp 

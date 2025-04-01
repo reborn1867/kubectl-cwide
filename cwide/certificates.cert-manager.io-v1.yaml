@@ -1,0 +1,2 @@
+Ready                                          Secret                                         Issuer                                         Status                                         Age                                            
+.status.conditions[?(@.type=="Ready")].status  .spec.secretName                               .spec.issuerRef.name                           .status.conditions[?(@.type=="Ready")].message .metadata.creationTimestamp                    

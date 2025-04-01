@@ -1,0 +1,2 @@
+Policy                      Rule                        RuleType                    ResourceKind                ResourceName                ResourceNamespace           status                      Age                         
+.spec.policy                .spec.rule                  .spec.requestType           .spec.resource.kind         .spec.resource.name         .spec.resource.namespace    .status.state               .metadata.creationTimestamp 

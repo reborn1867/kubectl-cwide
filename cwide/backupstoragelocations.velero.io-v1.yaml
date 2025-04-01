@@ -1,0 +1,2 @@
+Phase                       Last Validated              Age                         Default                     
+.status.phase               .status.lastValidationTime  .metadata.creationTimestamp .spec.default               

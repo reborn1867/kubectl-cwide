@@ -1,0 +1,2 @@
+Age                                            Ready                                          Status                                         
+.metadata.creationTimestamp                    .status.conditions[?(@.type=="Ready")].status  .status.conditions[?(@.type=="Ready")].message 
