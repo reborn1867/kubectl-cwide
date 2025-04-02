@@ -1,2 +1,0 @@
-URL                                            Age                                            Ready                                          Status                                         
-.spec.url                                      .metadata.creationTimestamp                    .status.conditions[?(@.type=="Ready")].status  .status.conditions[?(@.type=="Ready")].message 

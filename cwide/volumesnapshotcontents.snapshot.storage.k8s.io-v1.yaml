@@ -1,2 +1,0 @@
-ReadyToUse                        RestoreSize                       DeletionPolicy                    Driver                            VolumeSnapshotClass               VolumeSnapshot                    VolumeSnapshotNamespace           Age                               
-.status.readyToUse                .status.restoreSize               .spec.deletionPolicy              .spec.driver                      .spec.volumeSnapshotClassName     .spec.volumeSnapshotRef.name      .spec.volumeSnapshotRef.namespace .metadata.creationTimestamp       

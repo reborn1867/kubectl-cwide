@@ -1,2 +1,0 @@
-Namespace                   Pod                         Uploader Type               Volume                      Status                      TotalBytes                  BytesDone                   Age                         
-.spec.pod.namespace         .spec.pod.name              .spec.uploaderType          .spec.volume                .status.phase               .status.progress.totalBytes .status.progress.bytesDone  .metadata.creationTimestamp 

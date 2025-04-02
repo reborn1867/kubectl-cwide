@@ -1,2 +1,0 @@
-Ready                                          Status                                         Age                                            
-.status.conditions[?(@.type=="Ready")].status  .status.conditions[?(@.type=="Ready")].message .metadata.creationTimestamp                    

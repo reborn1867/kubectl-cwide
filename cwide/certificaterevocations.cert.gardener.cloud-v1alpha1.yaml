@@ -1,2 +1,0 @@
-CERTIFICATE                 STATUS                      REVOKED_AT                  RENEW                       QUALIFIED_AT                AGE                         
-.spec.certificateRef.name   .status.state               .status.revocationApplied   .spec.renew                 .spec.qualifyingDate        .metadata.creationTimestamp 

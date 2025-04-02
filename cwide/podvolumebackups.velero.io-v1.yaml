@@ -1,2 +1,0 @@
-Status                      Created                     Namespace                   Pod                         Volume                      Uploader Type               Storage Location            Age                         
-.status.phase               .status.startTimestamp      .spec.pod.namespace         .spec.pod.name              .spec.volume                .spec.uploaderType          .spec.backupStorageLocation .metadata.creationTimestamp 

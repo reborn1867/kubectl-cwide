@@ -1,2 +1,0 @@
-VERSION                             READY_REPLICAS                      REPLICAS                            Reason                              
-.spec.template.spec.datahub.version .status.readyReplicas               .status.replicas                    .status.reason                      

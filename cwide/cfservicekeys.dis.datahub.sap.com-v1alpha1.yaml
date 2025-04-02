@@ -1,2 +1,0 @@
-State                       Instance_Name               Instance_ID                 Age                         
-.status.state               .spec.serviceInstanceName   .status.instanceID          .metadata.creationTimestamp 

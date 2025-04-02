@@ -1,2 +1,0 @@
-K8S                         Shoot                       Provider                    Region                      Age                         State                       
-.status.kubernetesVersion   .spec.shootName             .spec.providerType          .spec.cloudRegion           .metadata.creationTimestamp .status.state               

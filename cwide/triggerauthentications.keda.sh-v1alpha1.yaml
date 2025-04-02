@@ -1,2 +1,0 @@
-PodIdentity                   Secret                        Env                           VaultAddress                  ScaledObjects                 ScaledJobs                    
-.spec.podIdentity.provider    .spec.secretTargetRef[*].name .spec.env[*].name             .spec.hashiCorpVault.address  .status.scaledobjects         .status.scaledjobs            

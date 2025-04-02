@@ -1,2 +1,0 @@
-State                       Issuer                      Reason                      Age                         
-.status.state               .spec.issuerRef.name        .status.reason              .metadata.creationTimestamp 

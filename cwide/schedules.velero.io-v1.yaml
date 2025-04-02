@@ -1,2 +1,0 @@
-Status                      Schedule                    LastBackup                  Age                         Paused                      
-.status.phase               .spec.schedule              .status.lastBackup          .metadata.creationTimestamp .spec.paused                
