@@ -8,7 +8,7 @@ import (
 
 func NewCmdCwide(ioStreams genericiooptions.IOStreams) *cobra.Command {
 	command := &cobra.Command{
-		Use:   "cwide",
+		Use:   "kubectl cwide",
 		Short: "Custom wide output format",
 		RunE: func(c *cobra.Command, args []string) error {
 			c.Usage()

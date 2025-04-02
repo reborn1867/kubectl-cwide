@@ -1,12 +1,16 @@
 package get
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
+	"github.com/kubectl-cwide/pkg/common"
+	"github.com/kubectl-cwide/pkg/models"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/kubectl/pkg/cmd/get"
@@ -21,9 +25,23 @@ var GetCMD = &cobra.Command{
 		resourceKind := args[0]
 		// resourceName := args[1]
 
-		rootPath := cmd.Flag("template-path").Value.String()
+		var rootPath string
+		var err error
+		if cmd.Flag("template-path").Changed {
+			rootPath = cmd.Flag("template-path").Value.String()
+		} else {
+			// get template path from config.yaml
+			rootPath, err = getTemplatePathFromConfig()
+			if err != nil {
+				return err
+			}
+		}
 
-		cwideTemplatePath := findFileWithWildCard(filepath.Join(rootPath, fmt.Sprintf("%s*.yaml", resourceKind)))
+		crdPath := filepath.Join(rootPath, fmt.Sprintf("%s*", resourceKind), "default.yaml")
+		cwideTemplatePath := findFileWithWildCard(crdPath)
+		if cwideTemplatePath == "" {
+			return fmt.Errorf("template not found for resource kind %s\n", resourceKind)
+		}
 		file, err := os.Open(cwideTemplatePath)
 		if err != nil {
 			return fmt.Errorf("error reading template %s, %v\n", cwideTemplatePath, err)
@@ -95,4 +113,28 @@ func findFileWithWildCard(path string) string {
 		return matches[0]
 	}
 	return ""
+}
+
+// get template path from config.yaml
+func getTemplatePathFromConfig() (string, error) {
+
+	// Read the configuration file
+	configFile, err := os.ReadFile(common.ConfigPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Parse the configuration file
+	var config models.Config
+	err = yaml.Unmarshal(configFile, &config)
+	if err != nil {
+		return "", err
+	}
+
+	// Check if the template path is set
+	if config.TemplatePath == "" {
+		return "", errors.New("template path not found in configuration")
+	}
+
+	return config.TemplatePath, nil
 }

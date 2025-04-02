@@ -7,13 +7,13 @@ import (
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 )
 
-// create a temp directory if not exists
+// create a temp directory if not exists, create parent directories if not exists
 func CreateTempDir(path string) error {
-	if _, err := os.Stat(path); os.IsNotExist(err) {
-		if err := os.Mkdir(path, 0755); err != nil {
-			return err
-		}
+	// Create parent directories if not exists
+	if err := os.MkdirAll(path, 0755); err != nil {
+		return err
 	}
+
 	return nil
 }
 
