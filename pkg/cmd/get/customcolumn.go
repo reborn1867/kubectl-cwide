@@ -1,17 +1,5 @@
 /*
-Copyright 2014 The Kubernetes Authors.
-
-Licensed under the Apache License, Version 2.0 (the "License");
-you may not use this file except in compliance with the License.
-You may obtain a copy of the License at
-
-    http://www.apache.org/licenses/LICENSE-2.0
-
-Unless required by applicable law or agreed to in writing, software
-distributed under the License is distributed on an "AS IS" BASIS,
-WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-See the License for the specific language governing permissions and
-limitations under the License.
+copied from k8s.io/kubernetes/pkg/kubectl/pkg/cmd/get/customcolumn.go, to add customized printing functionality
 */
 
 package get
@@ -25,6 +13,7 @@ import (
 	"reflect"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/liggitt/tabwriter"
 
@@ -181,7 +170,11 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		s.lastType = t
 	}
 	parsers := make([]*jsonpath.JSONPath, len(s.Columns))
-	for ix := range s.Columns {
+	var ageIndex *int
+	for ix, col := range s.Columns {
+		if col.Header == "AGE" {
+			ageIndex = &ix
+		}
 		parsers[ix] = jsonpath.New(fmt.Sprintf("column%d", ix)).AllowMissingKeys(true)
 		if err := parsers[ix].Parse(s.Columns[ix].FieldSpec); err != nil {
 			return err
@@ -194,19 +187,19 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 			return err
 		}
 		for ix := range objs {
-			if err := s.printOneObject(objs[ix], parsers, out); err != nil {
+			if err := s.printOneObject(objs[ix], parsers, out, ageIndex); err != nil {
 				return err
 			}
 		}
 	} else {
-		if err := s.printOneObject(obj, parsers, out); err != nil {
+		if err := s.printOneObject(obj, parsers, out, ageIndex); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []*jsonpath.JSONPath, out io.Writer) error {
+func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []*jsonpath.JSONPath, out io.Writer, ageIndex *int) error {
 	columns := make([]string, len(parsers))
 	switch u := obj.(type) {
 	case *metav1.WatchEvent:
@@ -251,13 +244,29 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []*jso
 		if len(values) == 0 || len(values[0]) == 0 {
 			valueStrings = append(valueStrings, "<none>")
 		}
+
 		for arrIx := range values {
 			for valIx := range values[arrIx] {
 				valueStrings = append(valueStrings, printers.EscapeTerminal(fmt.Sprint(values[arrIx][valIx].Interface())))
+			}
+		}
+		if ageIndex != nil && ix == *ageIndex {
+			for i := 0; i < len(valueStrings); i++ {
+				valueStrings[i] = age(valueStrings[i])
 			}
 		}
 		columns[ix] = strings.Join(valueStrings, ",")
 	}
 	fmt.Fprintln(out, strings.Join(columns, "\t"))
 	return nil
+}
+
+// age calculates the age of a resource based on its creation time in RFC3393.
+func age(creationTime string) string {
+	t, err := time.Parse(time.RFC3339, creationTime)
+	if err != nil {
+		return ""
+	}
+
+	return time.Since(t).Truncate(time.Hour).String()
 }

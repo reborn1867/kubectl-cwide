@@ -3,6 +3,7 @@ package initialization
 import (
 	"context"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -11,6 +12,7 @@ import (
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -19,69 +21,82 @@ import (
 	"github.com/kubectl-cwide/pkg/utils"
 )
 
-type CRDProperty struct {
-	Names v1.CustomResourceDefinitionNames `json:"names"`
-}
+func NewCmdInit() *cobra.Command {
+	initCMD := &cobra.Command{
+		Use:   "init",
+		Short: "init cwide template",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			config := ctrl.GetConfigOrDie()
 
-var InitCMD = &cobra.Command{
-	Use:   "init",
-	Short: "init cwide template",
-	RunE: func(cmd *cobra.Command, args []string) error {
-		config := ctrl.GetConfigOrDie()
+			k8sClient, err := client.New(config, client.Options{})
+			if err != nil {
+				return err
+			}
 
-		k8sClient, err := client.New(config, client.Options{})
-		if err != nil {
-			return err
-		}
+			clientSet := apiextensionsclientset.NewForConfigOrDie(config)
 
-		clientSet := apiextensionsclientset.NewForConfigOrDie(config)
+			apiextensions.AddToScheme(k8sClient.Scheme())
+			v1.AddToScheme(k8sClient.Scheme())
 
-		apiextensions.AddToScheme(k8sClient.Scheme())
-		v1.AddToScheme(k8sClient.Scheme())
+			crdList, err := clientSet.ApiextensionsV1().CustomResourceDefinitions().List(context.TODO(), metav1.ListOptions{})
+			if err != nil {
+				return err
+			}
 
-		crdList, err := clientSet.ApiextensionsV1().CustomResourceDefinitions().List(context.TODO(), metav1.ListOptions{})
-		if err != nil {
-			return err
-		}
+			path := cmd.Flag("template-path").Value.String()
 
-		path := cmd.Flag("template-path").Value.String()
+			if err := utils.CreateTempDir(path); err != nil {
+				return fmt.Errorf("failed to create temp directory: %v", err)
+			}
 
-		if err := utils.CreateTempDir(path); err != nil {
-			return fmt.Errorf("failed to create temp directory: %v", err)
-		}
+			absPath, err := filepath.Abs(path)
+			if err != nil {
+				return fmt.Errorf("failed to get absolute path: %v", err)
+			}
 
-		b, err := yaml.Marshal(&models.Config{TemplatePath: path})
-		if err != nil {
-			return fmt.Errorf("failed to marshal config: %v", err)
-		}
+			configRaw, err := yaml.Marshal(&models.Config{TemplatePath: absPath})
+			if err != nil {
+				return fmt.Errorf("failed to marshal config: %v", err)
+			}
 
-		if err := utils.CreateTempDir(filepath.Dir(common.ConfigPath)); err != nil {
-			return fmt.Errorf("failed to create temp directory: %v", err)
-		}
+			homeDir, err := os.UserHomeDir()
+			if err != nil {
+				return fmt.Errorf("failed to get home directory: %v", err)
+			}
 
-		if err := utils.CreateOrUpdateFile(common.ConfigPath, b); err != nil {
-			return fmt.Errorf("failed to create or update file: %v", err)
-		}
+			if err := utils.CreateTempDir(filepath.Join(homeDir, filepath.Dir(common.ConfigPath))); err != nil {
+				return fmt.Errorf("failed to create config directory: %v", err)
+			}
 
-		for _, crd := range crdList.Items {
-			for _, v := range crd.Spec.Versions {
-				if err := utils.CreateTempDir(fmt.Sprintf("%s/%s-%s", path, crd.Name, v.Name)); err != nil {
-					return fmt.Errorf("failed to create temp directory: %v", err)
-				}
-				if err := utils.CreateOrUpdateFile(fmt.Sprintf("%s/%s-%s/default.yaml", path, crd.Name, v.Name), utils.BuildColumnTemplate(v.AdditionalPrinterColumns)); err != nil {
-					return fmt.Errorf("failed to create or update file: %v", err)
-				}
+			if err := utils.CreateOrUpdateFile(filepath.Join(homeDir, common.ConfigPath), configRaw); err != nil {
+				return fmt.Errorf("failed to create or update config file: %v", err)
+			}
 
-				b, err := yaml.Marshal(CRDProperty{Names: crd.Spec.Names})
-				if err != nil {
-					return fmt.Errorf("failed to marshal crd property: %v", err)
-				}
+			for _, crd := range crdList.Items {
+				for _, v := range crd.Spec.Versions {
+					crdTemplateDir := filepath.Join(path, utils.GetCRDDirName(schema.GroupVersionKind{
+						Group:   crd.Spec.Group,
+						Version: v.Name,
+						Kind:    crd.Spec.Names.Kind,
+					}))
+					fmt.Printf("Creating template directory: %s\n", crdTemplateDir)
+					if err := utils.CreateTempDir(crdTemplateDir); err != nil {
+						return fmt.Errorf("failed to create template directory: %v", err)
+					}
 
-				if err := utils.CreateOrUpdateFile(fmt.Sprintf("%s/%s-%s/property.yaml", path, crd.Name, v.Name), b); err != nil {
-					return fmt.Errorf("failed to create or update file: %v", err)
+					firstCol := v1.CustomResourceColumnDefinition{
+						Name:     "Name",
+						JSONPath: ".metadata.name",
+					}
+
+					if err := utils.CreateOrUpdateFile(filepath.Join(crdTemplateDir, "default.yaml"), utils.BuildColumnTemplate(append([]v1.CustomResourceColumnDefinition{firstCol}, v.AdditionalPrinterColumns...))); err != nil {
+						return fmt.Errorf("failed to create or update template file: %v", err)
+					}
+
 				}
 			}
-		}
-		return nil
-	},
+			return nil
+		},
+	}
+	return initCMD
 }

@@ -20,16 +20,21 @@ var (
 )
 
 func init() {
-	flag.StringVar(&templatePath, "template-path", "./cwide", "Path to the template file")
+	flag.StringVar(&templatePath, "template-path", "/tmp/cwide", "Path to the template file")
 }
 
 func main() {
 	flag.Parse()
 
-	root := cmd.NewCmdCwide(genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr})
+	stream := genericiooptions.IOStreams{In: os.Stdin, Out: os.Stdout, ErrOut: os.Stderr}
 
-	root.AddCommand(initialization.InitCMD)
-	root.AddCommand(get.GetCMD)
+	// Initialize the command line interface
+	root := cmd.NewCmdCwide(stream)
+	initCMD := initialization.NewCmdInit()
+	getCmd := get.NewCmdGet(stream)
+
+	root.AddCommand(initCMD)
+	root.AddCommand(getCmd)
 	root.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 	if err := root.Execute(); err != nil {
 		os.Exit(1)

@@ -1,10 +1,12 @@
 package utils
 
 import (
+	"fmt"
 	"os"
 	"strings"
 
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 // create a temp directory if not exists, create parent directories if not exists
@@ -60,7 +62,7 @@ func BuildColumnTemplate(columns []v1.CustomResourceColumnDefinition) []byte {
 
 	// Build header row with proper indentation
 	for _, col := range columns {
-		content = append(content, []byte(col.Name)...)
+		content = append(content, []byte(strings.ToUpper(col.Name))...)
 		content = append(content, []byte(strings.Repeat(" ", maxLen-len(col.Name)+1))...)
 	}
 	content = append(content, []byte("\n")...)
@@ -73,4 +75,8 @@ func BuildColumnTemplate(columns []v1.CustomResourceColumnDefinition) []byte {
 	content = append(content, []byte("\n")...)
 
 	return content
+}
+
+func GetCRDDirName(gvk schema.GroupVersionKind) string {
+	return strings.ToLower(fmt.Sprintf("%s-%s-%s", gvk.Kind, gvk.Group, gvk.Version))
 }
