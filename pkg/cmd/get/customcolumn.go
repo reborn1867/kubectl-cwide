@@ -21,6 +21,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/util/jsonpath"
 )
@@ -257,6 +258,7 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []*jso
 		}
 		columns[ix] = strings.Join(valueStrings, ",")
 	}
+
 	fmt.Fprintln(out, strings.Join(columns, "\t"))
 	return nil
 }
@@ -268,5 +270,5 @@ func age(creationTime string) string {
 		return ""
 	}
 
-	return time.Since(t).Truncate(time.Hour).String()
+	return duration.HumanDuration(time.Since(t))
 }

@@ -13,6 +13,7 @@ import (
 	"gopkg.in/yaml.v3"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+	"k8s.io/cli-runtime/pkg/printers"
 
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/scheme"
@@ -129,9 +130,11 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 
 	printer.NoHeaders = o.NoHeaders
 
+	w := printers.GetNewTabWriter(os.Stdout)
 	for _, info := range infos {
-		printer.PrintObj(info.Object, os.Stdout)
+		printer.PrintObj(info.Object, w)
 	}
+	w.Flush()
 
 	return nil
 }

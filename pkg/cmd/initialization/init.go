@@ -84,12 +84,16 @@ func NewCmdInit() *cobra.Command {
 						return fmt.Errorf("failed to create template directory: %v", err)
 					}
 
-					firstCol := v1.CustomResourceColumnDefinition{
-						Name:     "Name",
-						JSONPath: ".metadata.name",
+					// add resource name as first column
+					columns := []v1.CustomResourceColumnDefinition{
+						{
+							Name:     "Name",
+							JSONPath: ".metadata.name",
+						},
 					}
+					columns = append(columns, v.AdditionalPrinterColumns...)
 
-					if err := utils.CreateOrUpdateFile(filepath.Join(crdTemplateDir, "default.yaml"), utils.BuildColumnTemplate(append([]v1.CustomResourceColumnDefinition{firstCol}, v.AdditionalPrinterColumns...))); err != nil {
+					if err := utils.CreateOrUpdateFile(filepath.Join(crdTemplateDir, "default.yaml"), utils.BuildColumnTemplate(columns)); err != nil {
 						return fmt.Errorf("failed to create or update template file: %v", err)
 					}
 
