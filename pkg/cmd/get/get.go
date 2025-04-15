@@ -1,16 +1,12 @@
 package get
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 
-	"github.com/kubectl-cwide/pkg/common"
-	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
-	"gopkg.in/yaml.v3"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
@@ -58,7 +54,7 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 		rootPath = cmd.Flag("template-path").Value.String()
 	} else {
 		// get template path from config.yaml
-		rootPath, err = getTemplatePathFromConfig()
+		rootPath, err = utils.GetTemplatePathFromConfig()
 		if err != nil {
 			return err
 		}
@@ -160,33 +156,4 @@ func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	cmdutil.AddSubresourceFlags(cmd, &o.Subresource, "If specified, gets the subresource of the requested object.")
 
 	return cmd
-}
-
-// get template path from config.yaml
-func getTemplatePathFromConfig() (string, error) {
-
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return "", fmt.Errorf("failed to get home directory: %v", err)
-	}
-
-	// Read the configuration file
-	configFile, err := os.ReadFile(filepath.Join(homeDir, common.ConfigPath))
-	if err != nil {
-		return "", err
-	}
-
-	// Parse the configuration file
-	var config models.Config
-	err = yaml.Unmarshal(configFile, &config)
-	if err != nil {
-		return "", err
-	}
-
-	// Check if the template path is set
-	if config.TemplatePath == "" {
-		return "", errors.New("template path not found in configuration")
-	}
-
-	return config.TemplatePath, nil
 }

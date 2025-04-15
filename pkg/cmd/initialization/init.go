@@ -45,10 +45,6 @@ func NewCmdInit() *cobra.Command {
 
 			path := cmd.Flag("template-path").Value.String()
 
-			if err := utils.CreateTempDir(path); err != nil {
-				return fmt.Errorf("failed to create temp directory: %v", err)
-			}
-
 			absPath, err := filepath.Abs(path)
 			if err != nil {
 				return fmt.Errorf("failed to get absolute path: %v", err)
@@ -64,13 +60,11 @@ func NewCmdInit() *cobra.Command {
 				return fmt.Errorf("failed to get home directory: %v", err)
 			}
 
-			if err := utils.CreateTempDir(filepath.Join(homeDir, filepath.Dir(common.ConfigPath))); err != nil {
-				return fmt.Errorf("failed to create config directory: %v", err)
-			}
-
-			if err := utils.CreateOrUpdateFile(filepath.Join(homeDir, common.ConfigPath), configRaw); err != nil {
+			if err := utils.CreateFileIfNotExits(filepath.Join(homeDir, common.ConfigPath), configRaw); err != nil {
 				return fmt.Errorf("failed to create or update config file: %v", err)
 			}
+
+			fmt.Printf("Initializing template directory at : %s\n", path)
 
 			for _, crd := range crdList.Items {
 				for _, v := range crd.Spec.Versions {
@@ -79,10 +73,6 @@ func NewCmdInit() *cobra.Command {
 						Version: v.Name,
 						Kind:    crd.Spec.Names.Kind,
 					}))
-					fmt.Printf("Creating template directory: %s\n", crdTemplateDir)
-					if err := utils.CreateTempDir(crdTemplateDir); err != nil {
-						return fmt.Errorf("failed to create template directory: %v", err)
-					}
 
 					// add resource name as first column
 					columns := []v1.CustomResourceColumnDefinition{
@@ -93,7 +83,7 @@ func NewCmdInit() *cobra.Command {
 					}
 					columns = append(columns, v.AdditionalPrinterColumns...)
 
-					if err := utils.CreateOrUpdateFile(filepath.Join(crdTemplateDir, "default.yaml"), utils.BuildColumnTemplate(columns)); err != nil {
+					if err := utils.CreateOrFormatFile(filepath.Join(crdTemplateDir, "default.tpl"), utils.BuildColumnTemplate(columns)); err != nil {
 						return fmt.Errorf("failed to create or update template file: %v", err)
 					}
 

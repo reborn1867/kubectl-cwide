@@ -12,6 +12,7 @@ import (
 	"github.com/kubectl-cwide/pkg/cmd"
 	"github.com/kubectl-cwide/pkg/cmd/get"
 	"github.com/kubectl-cwide/pkg/cmd/initialization"
+	"github.com/kubectl-cwide/pkg/cmd/template"
 )
 
 var (
@@ -32,9 +33,11 @@ func main() {
 	root := cmd.NewCmdCwide(stream)
 	initCMD := initialization.NewCmdInit()
 	getCmd := get.NewCmdGet(stream)
+	templCMD := template.NewCmdTemplate()
 
 	root.AddCommand(initCMD)
 	root.AddCommand(getCmd)
+	root.AddCommand(templCMD)
 	root.PersistentFlags().AddGoFlagSet(flag.CommandLine)
 	if err := root.Execute(); err != nil {
 		os.Exit(1)
