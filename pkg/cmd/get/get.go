@@ -35,6 +35,8 @@ type GetOptions struct {
 	IgnoreNotFound bool
 
 	genericiooptions.IOStreams
+
+	Template string
 }
 
 // NewGetOptions returns a GetOptions with default chunk size 500.
@@ -112,9 +114,11 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 	var crdTemplateDir string
 	crdTemplateDir = utils.GetCRDDirName(infos[0].Object.GetObjectKind().GroupVersionKind())
 
-	file, err := os.Open(filepath.Join(rootPath, crdTemplateDir, "default.yaml"))
+	templateFile := fmt.Sprintf("%s.tpl", o.Template)
+
+	file, err := os.Open(filepath.Join(rootPath, crdTemplateDir, templateFile))
 	if err != nil {
-		return fmt.Errorf("error reading template %s, %v\n", filepath.Join(rootPath, crdTemplateDir, "default.yaml"), err)
+		return fmt.Errorf("error reading template %s, %v\n", filepath.Join(rootPath, crdTemplateDir, templateFile), err)
 	}
 
 	decoder := scheme.Codecs.UniversalDecoder(scheme.Scheme.PrioritizedVersionsAllGroups()...)
@@ -151,6 +155,7 @@ func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	cmd.Flags().BoolVar(&o.IgnoreNotFound, "ignore-not-found", o.IgnoreNotFound, "If the requested object does not exist the command will return exit code 0.")
 	cmd.Flags().StringVar(&o.FieldSelector, "field-selector", o.FieldSelector, "Selector (field query) to filter on, supports '=', '==', and '!='.(e.g. --field-selector key1=value1,key2=value2). The server only supports a limited number of field queries per type.")
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", o.AllNamespaces, "If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even if specified with --namespace.")
+	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Template string to use when printing objects. Use \"\" to disable the template.")
 	cmdutil.AddChunkSizeFlag(cmd, &o.ChunkSize)
 	cmdutil.AddLabelSelectorFlagVar(cmd, &o.LabelSelector)
 	cmdutil.AddSubresourceFlags(cmd, &o.Subresource, "If specified, gets the subresource of the requested object.")
