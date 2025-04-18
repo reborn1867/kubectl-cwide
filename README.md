@@ -8,9 +8,9 @@ Managing Kubernetes resources often requires printing extra columns for specific
 `kubectl-cwide` simplifies this process by allowing you to persist custom column formats. You can easily edit, extend, alias, or share these formats with your team members.
 
 ## Highlights
-- **Template Based Parsing**: Besides native jsonpath parse, You could easily customize your own table output using the same approach as Helm templates, leveraging the flexibility and power of [text.Template](https://pkg.go.dev/text/template).
+- **Template Based Parsing**: In addition to native JSONPath parsing, you can effortlessly customize your table output using the same approach as Helm templates, harnessing the flexibility and power of [text.Template](https://pkg.go.dev/text/template).
 - **Automatic Template Generation**: Automatically generate custom column templates for Kubernetes resources, saving time and effort.
-- **Customizable Output**: Easily define and persist custom column formats for specific resource types.
+- **Customizable Output**: Define and persist custom column formats for specific resource types with ease.
 - **Editable Templates**: Modify and extend templates as needed to suit your workflow.
 - **Team Collaboration**: Share custom column templates with team members for consistent and standardized output.
 
@@ -70,16 +70,14 @@ NAME                                READY   STATUS    RESTARTS      AGE
 {{- end }}
 
 kubectl cwide get pod
-NAME                                            READY   STATUS    RESTARTS   AGE
-fluentd-cpg6x                                   1/1     Running   0          3d2h
-fluentd-pr48h                                   1/1     Running   0          3d2h
-grafana-78578fcfd5-2lhf8                        2/2     Running   0          7d23h
-grafana-78578fcfd5-9s7q4                        2/2     Running   0          7d23h
+NAME                       READY   STATUS    RESTARTS   AGE
+fluentd-cpg6x              1/1     Running   0          3d2h
+fluentd-pr48h              1/1     Running   0          3d2h
+grafana-78578fcfd5-2lhf8   2/2     Running   0          7d23h
+grafana-78578fcfd5-9s7q4   2/2     Running   0          7d23h
 ```
 
 We managed to make output looks almost the same as `kubectl get pod` which is not supported by custom columns output `-ocustom-columns`. By leveraging various helm template functions (and there will be more in the future), you get to freely create your own customized output.
-
-
 
 ## Reference 
 - **cli-runtime**: A set of packages to share code with `kubectl` for printing output or sharing command-line options.
