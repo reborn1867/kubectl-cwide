@@ -8,12 +8,11 @@ Managing Kubernetes resources often requires printing extra columns for specific
 `kubectl-cwide` simplifies this process by allowing you to persist custom column formats. You can easily edit, extend, alias, or share these formats with your team members.
 
 ## Highlights
+- **Template Based Parsing**: Besides native jsonpath parse, You could easily customize your own table output using the same approach as Helm templates, leveraging the flexibility and power of [text.Template](https://pkg.go.dev/text/template).
 - **Automatic Template Generation**: Automatically generate custom column templates for Kubernetes resources, saving time and effort.
 - **Customizable Output**: Easily define and persist custom column formats for specific resource types.
 - **Editable Templates**: Modify and extend templates as needed to suit your workflow.
 - **Team Collaboration**: Share custom column templates with team members for consistent and standardized output.
-- **Support for All Resources**: Works with all Kubernetes resource types, including CRDs.
-- **Integration with `krew`**: Seamlessly install and manage the plugin using the Kubernetes `krew` plugin manager.
 
 ## Usage
 1. **Initialize Custom Column Template**: Generate a template file based on CRD.
@@ -43,6 +42,46 @@ grafana-85cf45988b-5wttc   Running   0          4d13h   True                    
 grafana-85cf45988b-knmhn   Running   0          4d13h   True                            True          True    True               True
 ```
 
+### Sample Template File with `text.Template`
+```sh
+cat /tmp/cwide/pod--v1/original-output.tpl
+
+NAME                                READY   STATUS    RESTARTS      AGE
+.metadata.name {{ template "PodReady" . }} .status.phase {{ template "PodRestarts" . }} .metadata.creationTimestamp 
+
+{{- define "PodReady" -}}
+  {{- $ready := 0 | int  -}}
+  {{- $total := 0 | int  -}}
+  {{- range $idx, $status := .status.containerStatuses }}
+    {{- $total = add 1 $total  -}}
+    {{- if eq $status.ready true }}
+      {{- $ready = add 1 $ready  -}}
+    {{- end }}
+  {{- end }}
+  {{- printf "%d/%d" $ready $total -}}
+{{- end }}
+
+{{- define "PodRestarts" -}}
+  {{- $restarts := 0 | int  -}}
+  {{- range $idx, $status := .status.containerStatuses }}
+    {{- $restarts = add $status.restartCount $restarts  -}}
+  {{- end }}
+  {{- $restarts -}}
+{{- end }}
+
+kubectl cwide get pod
+NAME                                            READY   STATUS    RESTARTS   AGE
+fluentd-cpg6x                                   1/1     Running   0          3d2h
+fluentd-pr48h                                   1/1     Running   0          3d2h
+grafana-78578fcfd5-2lhf8                        2/2     Running   0          7d23h
+grafana-78578fcfd5-9s7q4                        2/2     Running   0          7d23h
+```
+
+We managed to make output looks almost the same as `kubectl get pod` which is not supported by custom columns output `-ocustom-columns`. By leveraging various helm template functions (and there will be more in the future), you get to freely create your own customized output.
+
+
+
 ## Reference 
 - **cli-runtime**: A set of packages to share code with `kubectl` for printing output or sharing command-line options.
 - **sample-cli-plugin**: An example plugin implementation in Go.
+- **go template**: Data-driven templates for generating textual output. 

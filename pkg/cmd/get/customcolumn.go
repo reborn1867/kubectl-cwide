@@ -6,23 +6,23 @@ package get
 
 import (
 	"bufio"
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
 	"reflect"
 	"regexp"
 	"strings"
-	"time"
+	"text/template"
 
+	"github.com/kubectl-cwide/pkg/parser"
 	"github.com/liggitt/tabwriter"
 
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/cli-runtime/pkg/printers"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/jsonpath"
 )
 
@@ -82,49 +82,61 @@ func NewCustomColumnsPrinterFromSpec(spec string, decoder runtime.Decoder, noHea
 	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: noHeaders}, nil
 }
 
-func splitOnWhitespace(line string) []string {
-	lineScanner := bufio.NewScanner(bytes.NewBufferString(line))
-	lineScanner.Split(bufio.ScanWords)
-	result := []string{}
-	for lineScanner.Scan() {
-		result = append(result, lineScanner.Text())
-	}
-	return result
-}
-
 // NewCustomColumnsPrinterFromTemplate creates a custom columns printer from a template stream.  The template is expected
 // to consist of two lines, whitespace separated.  The first line is the header line, the second line is the jsonpath field spec
 // For example, the template below:
 // NAME               API_VERSION
 // {metadata.name}    {apiVersion}
-func NewCustomColumnsPrinterFromTemplate(templateReader io.Reader, decoder runtime.Decoder) (*CustomColumnsPrinter, error) {
+func NewCustomColumnsPrinterFromTemplate(templateReader io.Reader, decoder runtime.Decoder, restConfig *rest.Config) (*CustomColumnsPrinter, error) {
 	scanner := bufio.NewScanner(templateReader)
 	if !scanner.Scan() {
 		return nil, fmt.Errorf("invalid template, missing header line. Expected format is one line of space separated headers, one line of space separated column specs.")
 	}
-	headers := splitOnWhitespace(scanner.Text())
+	headers := splitIgnoringTemplateSpaces(scanner.Text())
 
 	if !scanner.Scan() {
 		return nil, fmt.Errorf("invalid template, missing spec line. Expected format is one line of space separated headers, one line of space separated column specs.")
 	}
-	specs := splitOnWhitespace(scanner.Text())
+
+	specs := splitIgnoringTemplateSpaces(scanner.Text())
 
 	if len(headers) != len(specs) {
 		return nil, fmt.Errorf("number of headers (%d) and field specifications (%d) don't match", len(headers), len(specs))
 	}
 
+	var templateText string
+	for scanner.Scan() {
+		templateText += scanner.Text() + "\n"
+	}
+	localTemplate := template.New("local")
+	localTemplate.Funcs(parser.GetFuncMap(restConfig))
+
+	_, err := localTemplate.Parse(templateText)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse template: %v", err)
+	}
+
 	columns := make([]Column, len(headers))
 	for ix := range headers {
-		spec, err := RelaxedJSONPathExpression(specs[ix])
-		if err != nil {
-			return nil, err
+		var spec string
+		var err error
+
+		// If the spec is a template, we don't want to parse it as a JSONPath expression
+		rawSpec := specs[ix]
+		if parser.IsTemplate(rawSpec) {
+			spec = rawSpec
+		} else {
+			spec, err = RelaxedJSONPathExpression(rawSpec)
+			if err != nil {
+				return nil, err
+			}
 		}
 		columns[ix] = Column{
 			Header:    headers[ix],
 			FieldSpec: spec,
 		}
 	}
-	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false}, nil
+	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false, Config: restConfig, localTemplate: localTemplate}, nil
 }
 
 // Column represents a user specified column
@@ -144,7 +156,9 @@ type CustomColumnsPrinter struct {
 	NoHeaders bool
 	// lastType records type of resource printed last so that we don't repeat
 	// header while printing same type of resources.
-	lastType reflect.Type
+	lastType      reflect.Type
+	Config        *rest.Config
+	localTemplate *template.Template
 }
 
 func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error {
@@ -170,16 +184,38 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		fmt.Fprintln(out, strings.Join(headers, "\t"))
 		s.lastType = t
 	}
-	parsers := make([]*jsonpath.JSONPath, len(s.Columns))
+	parsers := make([]parser.Parser, len(s.Columns))
 	var ageIndex *int
 	for ix, col := range s.Columns {
-		if col.Header == "AGE" {
-			ageIndex = &ix
+		p := parser.NewFieldParser()
+
+		p.IsAGE = col.Header == "AGE"
+
+		if parser.IsTemplate(col.FieldSpec) {
+			var tParser *template.Template
+			if s.localTemplate != nil {
+				tParser = s.localTemplate.New(fmt.Sprintf("column%d", ix)).Option("missingkey=zero")
+			} else {
+				tParser = template.New(fmt.Sprintf("column%d", ix)).Option("missingkey=zero")
+			}
+
+			tParser.Funcs(parser.GetFuncMap(s.Config))
+
+			tParser, err := tParser.Parse(col.FieldSpec)
+			if err != nil {
+				return fmt.Errorf("failed to parse template: %v, field spec: %s", err, col.FieldSpec)
+			}
+
+			p.Template = tParser
+		} else {
+			jpParser := jsonpath.New(fmt.Sprintf("column%d", ix)).AllowMissingKeys(true)
+			if err := jpParser.Parse(col.FieldSpec); err != nil {
+				return fmt.Errorf("failed to parse JSONPath expression: %v", err)
+			}
+			p.JSONPath = jpParser
 		}
-		parsers[ix] = jsonpath.New(fmt.Sprintf("column%d", ix)).AllowMissingKeys(true)
-		if err := parsers[ix].Parse(s.Columns[ix].FieldSpec); err != nil {
-			return err
-		}
+
+		parsers[ix] = p
 	}
 
 	if meta.IsListType(obj) {
@@ -200,7 +236,7 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 	return nil
 }
 
-func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []*jsonpath.JSONPath, out io.Writer, ageIndex *int) error {
+func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []parser.Parser, out io.Writer, ageIndex *int) error {
 	columns := make([]string, len(parsers))
 	switch u := obj.(type) {
 	case *metav1.WatchEvent:
@@ -230,45 +266,44 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []*jso
 	for ix := range parsers {
 		parser := parsers[ix]
 
-		var values [][]reflect.Value
-		var err error
-		if unstructured, ok := obj.(runtime.Unstructured); ok {
-			values, err = parser.FindResults(unstructured.UnstructuredContent())
-		} else {
-			values, err = parser.FindResults(reflect.ValueOf(obj).Elem().Interface())
-		}
-
+		col, err := parser.Parse(obj)
 		if err != nil {
 			return err
 		}
-		valueStrings := []string{}
-		if len(values) == 0 || len(values[0]) == 0 {
-			valueStrings = append(valueStrings, "<none>")
-		}
 
-		for arrIx := range values {
-			for valIx := range values[arrIx] {
-				valueStrings = append(valueStrings, printers.EscapeTerminal(fmt.Sprint(values[arrIx][valIx].Interface())))
-			}
-		}
-		if ageIndex != nil && ix == *ageIndex {
-			for i := 0; i < len(valueStrings); i++ {
-				valueStrings[i] = age(valueStrings[i])
-			}
-		}
-		columns[ix] = strings.Join(valueStrings, ",")
+		columns[ix] = col
 	}
 
 	fmt.Fprintln(out, strings.Join(columns, "\t"))
 	return nil
 }
 
-// age calculates the age of a resource based on its creation time in RFC3393.
-func age(creationTime string) string {
-	t, err := time.Parse(time.RFC3339, creationTime)
-	if err != nil {
-		return ""
+// SplitIgnoringTemplateSpaces splits a string by spaces but ignores spaces inside `{{}}`
+func splitIgnoringTemplateSpaces(input string) []string {
+	// Regex to match `{{ ... }}` patterns
+	templateRegex := regexp.MustCompile(`{{[^}]*}}`)
+
+	// Find all `{{ ... }}` patterns
+	matches := templateRegex.FindAllString(input, -1)
+
+	// Replace `{{ ... }}` patterns with placeholders
+	placeholder := "__TEMPLATE_PLACEHOLDER__"
+	processed := templateRegex.ReplaceAllString(input, placeholder)
+
+	// Split the processed string by spaces
+	parts := strings.Fields(processed)
+
+	// Replace placeholders with the original `{{ ... }}` patterns
+	result := []string{}
+	templateIndex := 0
+	for _, part := range parts {
+		if part == placeholder {
+			result = append(result, matches[templateIndex])
+			templateIndex++
+		} else {
+			result = append(result, part)
+		}
 	}
 
-	return duration.HumanDuration(time.Since(t))
+	return result
 }

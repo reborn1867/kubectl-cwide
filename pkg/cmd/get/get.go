@@ -123,16 +123,23 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 
 	decoder := scheme.Codecs.UniversalDecoder(scheme.Scheme.PrioritizedVersionsAllGroups()...)
 
-	printer, err := NewCustomColumnsPrinterFromTemplate(file, decoder)
+	restConfig, err := f.ToRESTConfig()
 	if err != nil {
-		return fmt.Errorf("error creating printer from template %v\n", err)
+		return fmt.Errorf("error getting rest config: %v\n", err)
+	}
+
+	printer, err := NewCustomColumnsPrinterFromTemplate(file, decoder, restConfig)
+	if err != nil {
+		return fmt.Errorf("error creating printer from template: %v\n", err)
 	}
 
 	printer.NoHeaders = o.NoHeaders
 
 	w := printers.GetNewTabWriter(os.Stdout)
 	for _, info := range infos {
-		printer.PrintObj(info.Object, w)
+		if err := printer.PrintObj(info.Object, w); err != nil {
+			return fmt.Errorf("error printing object: %v\n", err)
+		}
 	}
 	w.Flush()
 
