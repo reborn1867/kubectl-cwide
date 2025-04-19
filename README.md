@@ -14,6 +14,18 @@ Managing Kubernetes resources often requires printing extra columns for specific
 - **Editable Templates**: Modify and extend templates as needed to suit your workflow.
 - **Team Collaboration**: Share custom column templates with team members for consistent and standardized output.
 
+## Installation
+As a [krew](https://github.com/kubernetes-sigs/krew) plugin, `kubectl-ciwe` can be installed with a simple command as following once it's officially accepted.
+```
+kubectl krew install cwide
+```
+
+Currently the [PR](https://github.com/kubernetes-sigs/krew-index/pull/4548) to krew-index is still under review, but you still could install this plugin by adding the forked krew-index
+```
+kubectl krew index add reborn1867 https://github.com/reborn1867/krew-index
+kubectl krew install reborn1867/cwide
+```
+
 ## Usage
 1. **Initialize Custom Column Template**: Generate a template file based on CRD.
    ```sh
