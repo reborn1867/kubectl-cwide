@@ -8,6 +8,7 @@ import (
 	"text/template"
 
 	"github.com/BurntSushi/toml"
+	"github.com/gosuri/uiprogress"
 	"github.com/pkg/errors"
 	"sigs.k8s.io/yaml"
 	goYaml "sigs.k8s.io/yaml/goyaml.v3"
@@ -30,6 +31,7 @@ var DefaultMap = template.FuncMap{
 	"fromJsonArray": fromJSONArray,
 	"include":       includeFun(nil, map[string]int{}),
 	"tpl":           tplFun(nil, map[string]int{}, false),
+	"progressBar":   progressBar,
 }
 
 // toYAML takes an interface, marshals it to yaml, and returns a string. It will
@@ -223,4 +225,12 @@ func tplFun(parent *template.Template, includedNames map[string]int, strict bool
 		// See comment in renderWithReferences explaining the <no value> hack.
 		return strings.ReplaceAll(buf.String(), "<no value>", ""), nil
 	}
+}
+
+func progressBar(current, total int64) string {
+	bar := uiprogress.AddBar(int(total))
+	bar.Set(int(current))
+	bar.Width = 20
+	return bar.String()
+
 }
