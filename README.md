@@ -81,7 +81,7 @@ NAME                                READY   STATUS    RESTARTS      AGE
   {{- $restarts -}}
 {{- end }}
 
-kubectl cwide get pod
+kubectl cwide get pod -t original-output
 NAME                       READY   STATUS    RESTARTS   AGE
 fluentd-cpg6x              1/1     Running   0          3d2h
 fluentd-pr48h              1/1     Running   0          3d2h
