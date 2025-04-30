@@ -171,7 +171,7 @@ func BuildTableColumnTemplate(columns []metav1.TableColumnDefinition) []byte {
 
 	// Build header row with proper indentation
 	for _, col := range columns {
-		content = append(content, []byte(strings.ToUpper(col.Name))...)
+		content = append(content, []byte(strings.ToUpper(strings.ReplaceAll(col.Name, " ", "_")))...)
 		content = append(content, []byte(strings.Repeat(" ", maxLen-len(col.Name)+1))...)
 	}
 	content = append(content, []byte("\n")...)

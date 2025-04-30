@@ -102,14 +102,18 @@ func NewCmdInit() *cobra.Command {
 			for _, resourceList := range resourceLists {
 				var group, version string
 				groupVersion := strings.Split(resourceList.GroupVersion, "/")
-				group = strings.Split(resourceList.GroupVersion, "/")[0]
+				fmt.Printf("groupVersion: %s\n", groupVersion)
+				version = strings.Split(resourceList.GroupVersion, "/")[0]
 				if len(groupVersion) == 2 {
+					group = strings.Split(resourceList.GroupVersion, "/")[0]
 					version = strings.Split(resourceList.GroupVersion, "/")[1]
+				}
+				if len(groupVersion) == 1 {
+					version = strings.Split(resourceList.GroupVersion, "/")[0]
 				}
 				for _, resource := range resourceList.APIResources {
 					colDefinition := tableGenerator.ResourceColumnDefinition(strings.ToLower(resource.Kind))
 					if len(colDefinition) != 0 {
-						fmt.Printf("Found resource: %s-%s-%s\n", resource.Kind, group, version)
 						defaultResourceTemplateDir := filepath.Join(path, utils.GenerateDirNameByGVK(schema.GroupVersionKind{
 							Group:   group,
 							Version: version,
