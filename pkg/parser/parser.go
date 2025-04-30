@@ -40,9 +40,9 @@ func (p *FieldParser) Parse(obj runtime.Object, defaultTable *metav1.Table) (str
 	if p.IsDefaultPrinterField {
 		if defaultTable != nil {
 			for idx, column := range defaultTable.ColumnDefinitions {
-				if column.Name == p.Header {
+				if strings.ToLower(column.Name) == strings.ToLower(p.Header) {
 					if len(defaultTable.Rows) > 0 {
-						result = defaultTable.Rows[0].Cells[idx].(string)
+						result = fmt.Sprint(defaultTable.Rows[0].Cells[idx])
 						break
 					}
 				}

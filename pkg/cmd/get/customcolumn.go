@@ -280,8 +280,6 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		return fmt.Errorf("failed to generate table: %v", err)
 	}
 
-	fmt.Printf("table %v\t", t.Rows[0].Cells)
-
 	for ix := range parsers {
 		parser := parsers[ix]
 

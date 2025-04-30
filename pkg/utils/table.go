@@ -80,6 +80,10 @@ func (h *DefaultTableGenerator) GenerateTable(obj runtime.Object, options printe
 		return nil, convertResults[0].Interface().(error)
 	}
 
+	fmt.Printf("obj: %+v\n\n", unstructuredObj.Object)
+
+	fmt.Printf("Converting object to type %s, obj: %+v\n\n\n", handler.printFunc.Type().In(0).String(), typed.Interface())
+
 	args := []reflect.Value{typed, reflect.ValueOf(options)}
 	results := handler.printFunc.Call(args)
 	if !results[1].IsNil() {
