@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strings"
 
+	objectmeta "k8s.io/apiextensions-apiserver/pkg/apiserver/schema/objectmeta"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -75,14 +76,18 @@ func (h *DefaultTableGenerator) GenerateTable(obj runtime.Object, options printe
 	}
 
 	typed := reflect.New(handler.printFunc.Type().In(0).Elem())
-	convertResults := reflect.ValueOf(runtime.DefaultUnstructuredConverter.FromUnstructured).Call([]reflect.Value{reflect.ValueOf(unstructuredObj.Object), typed})
+
+	objMetaResults := reflect.ValueOf(objectmeta.GetObjectMeta).Call([]reflect.Value{reflect.ValueOf(unstructuredObj.UnstructuredContent()), reflect.ValueOf(true)})
+	if !objMetaResults[2].IsNil() {
+		return nil, objMetaResults[2].Interface().(error)
+	}
+
+	convertResults := reflect.ValueOf(runtime.DefaultUnstructuredConverter.FromUnstructured).Call([]reflect.Value{reflect.ValueOf(unstructuredObj.UnstructuredContent()), typed})
 	if !convertResults[0].IsNil() {
 		return nil, convertResults[0].Interface().(error)
 	}
 
-	fmt.Printf("obj: %+v\n\n", unstructuredObj.Object)
-
-	fmt.Printf("Converting object to type %s, obj: %+v\n\n\n", handler.printFunc.Type().In(0).String(), typed.Interface())
+	typed.Elem().FieldByName("ObjectMeta").Set(objMetaResults[0].Elem())
 
 	args := []reflect.Value{typed, reflect.ValueOf(options)}
 	results := handler.printFunc.Call(args)
