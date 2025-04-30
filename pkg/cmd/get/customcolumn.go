@@ -275,10 +275,7 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		}
 	}
 
-	t, err := s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
-	if err != nil {
-		return fmt.Errorf("failed to generate table: %v", err)
-	}
+	t, _ := s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
 
 	for ix := range parsers {
 		parser := parsers[ix]
