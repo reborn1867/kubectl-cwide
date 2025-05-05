@@ -20,12 +20,6 @@ As a [krew](https://github.com/kubernetes-sigs/krew) plugin, `kubectl-ciwe` can 
 kubectl krew install cwide
 ```
 
-Currently the [PR](https://github.com/kubernetes-sigs/krew-index/pull/4548) to krew-index is still under review, but you still could install this plugin by adding the forked krew-index
-```
-kubectl krew index add reborn1867 https://github.com/reborn1867/krew-index
-kubectl krew install reborn1867/cwide
-```
-
 ## Usage
 1. **Initialize Custom Column Template**: Generate a template file based on CRD.
    ```sh
@@ -37,6 +31,18 @@ kubectl krew install reborn1867/cwide
 3. **View Customized Output**: Use the generated template to display resources.
    ```sh
    kubectl cwide get <resource-kind> <resource-name>
+   ```
+
+4. **List templates**: List all templates of a k8s resource. (resource name cannot be plural nor short name)
+   ```
+   kubectl cwide template list -r <resource-name>
+   ```
+
+   e.g.
+   ```
+   kubectl cwide template list -r pod
+   default
+   original-output
    ```
 
 ### Sample Template File
@@ -90,6 +96,39 @@ grafana-78578fcfd5-9s7q4   2/2     Running   0          7d23h
 ```
 
 We managed to make output looks almost the same as `kubectl get pod` which is not supported by custom columns output `-ocustom-columns`. By leveraging various helm template functions (and there will be more in the future), you get to freely create your own customized output.
+
+### Customization on Default Kubernetes Objects
+For default k8s objects, kubectl-cwide generates a special template with mark `$_defaultPrinterField` to indicate that the column is printed by default printer of kubectl. You are free to build your customized output by appending new column, rearrange columns order or redo the whole output from scratch. 
+
+e.g.
+```
+cat /tmp/cwide/pod--v1/default.tpl
+NAME                  READY                 STATUS                RESTARTS              AGE                   IP                    NODE                  NOMINATED_NODE        READINESS_GATES
+$_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField
+```
+
+Using default template for output rendering, it would look the same as kubectl get output.
+```
+kubectl cwide get pod
+NAME                                            READY   STATUS      RESTARTS   AGE     IP       NODE                                                    NOMINATED_NODE   READINESS_GATES
+fluentd-wx98t                                   1/1     Running     0          24m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-76dzv
+fluentd-x55zk                                   1/1     Running     0          25m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-k7s7x
+grafana-7475f448db-49zn9                        2/2     Running     0          4d23h   <none>   shoot--di-demo--di-dmo-gcp-reg-default-z3-6ffc9-99nkz
+```
+
+If you want to remove columns `NOMINATED_NODE` and `READINESS_GATES` which you don't care, and add a new column for images, the template would be modified like this:
+```
+NAME                  READY                 STATUS                RESTARTS              AGE                   IP                    NODE                  IMAGES
+$_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField .spec.containers[*].image
+```
+
+And the output would be as following
+```
+NAME                                            READY   STATUS    RESTARTS   AGE     IP       NODE                                                    IMAGES
+fluentd-wx98t                                   1/1     Running   0          37m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-76dzv   fluent/fluentd:v1.16
+fluentd-x55zk                                   1/1     Running   0          39m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-k7s7x   fluent/fluentd:v1.16
+grafana-7475f448db-49zn9                        2/2     Running   0          4d23h   <none>   shoot--di-demo--di-dmo-gcp-reg-default-z3-6ffc9-99nkz   grafana/grafana:11.5.4
+```
 
 ## Reference 
 - **cli-runtime**: A set of packages to share code with `kubectl` for printing output or sharing command-line options.
