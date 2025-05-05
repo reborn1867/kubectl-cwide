@@ -227,7 +227,17 @@ func tplFun(parent *template.Template, includedNames map[string]int, strict bool
 	}
 }
 
-func progressBar(current, total int64) string {
+func progressBar(currentRaw, totalRaw interface{}) string {
+	current, ok := currentRaw.(int64)
+	if !ok {
+		return ""
+	}
+
+	total, ok := totalRaw.(int64)
+	if !ok {
+		return ""
+	}
+
 	bar := uiprogress.AddBar(int(total))
 	bar.Set(int(current))
 	bar.Width = 20
