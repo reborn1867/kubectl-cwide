@@ -11,6 +11,7 @@ import (
 	"github.com/kubectl-cwide/pkg/models"
 	"gopkg.in/yaml.v3"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
@@ -154,7 +155,39 @@ func BuildColumnTemplate(columns []v1.CustomResourceColumnDefinition) []byte {
 	return content
 }
 
-func GetCRDDirName(gvk schema.GroupVersionKind) string {
+func BuildTableColumnTemplate(columns []metav1.TableColumnDefinition) []byte {
+	var content []byte
+	var maxLen int
+
+	// Calculate maximum lengths
+	for _, col := range columns {
+		if len(col.Name) > maxLen {
+			maxLen = len(col.Name)
+		}
+		if len(common.DefaultPrinterField) > maxLen {
+			maxLen = len(common.DefaultPrinterField)
+		}
+	}
+
+	// Build header row with proper indentation
+	for _, col := range columns {
+		content = append(content, []byte(strings.ToUpper(strings.ReplaceAll(col.Name, " ", "_")))...)
+		content = append(content, []byte(strings.Repeat(" ", maxLen-len(col.Name)+1))...)
+	}
+	content = append(content, []byte("\n")...)
+
+	// Build JSONPath row with proper indentation
+	for _, col := range columns {
+		_ = col
+		content = append(content, []byte(common.DefaultPrinterField)...)
+		content = append(content, []byte(strings.Repeat(" ", maxLen-len(common.DefaultPrinterField)+1))...)
+	}
+	content = append(content, []byte("\n")...)
+
+	return content
+}
+
+func GenerateDirNameByGVK(gvk schema.GroupVersionKind) string {
 	return strings.ToLower(fmt.Sprintf("%s-%s-%s", gvk.Kind, gvk.Group, gvk.Version))
 }
 

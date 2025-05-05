@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -13,6 +14,7 @@ import (
 	apiextensionsclientset "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
@@ -68,7 +70,7 @@ func NewCmdInit() *cobra.Command {
 
 			for _, crd := range crdList.Items {
 				for _, v := range crd.Spec.Versions {
-					crdTemplateDir := filepath.Join(path, utils.GetCRDDirName(schema.GroupVersionKind{
+					crdTemplateDir := filepath.Join(path, utils.GenerateDirNameByGVK(schema.GroupVersionKind{
 						Group:   crd.Spec.Group,
 						Version: v.Name,
 						Kind:    crd.Spec.Names.Kind,
@@ -87,6 +89,41 @@ func NewCmdInit() *cobra.Command {
 						return fmt.Errorf("failed to create or update template file: %v", err)
 					}
 
+				}
+			}
+
+			_, resourceLists, err := clientSet.Discovery().ServerGroupsAndResources()
+			if err != nil {
+				return fmt.Errorf("failed to get server groups and resources: %v", err)
+			}
+
+			tableGenerator := utils.NewTableGenerator().With(printersinternal.AddHandlers)
+
+			for _, resourceList := range resourceLists {
+				var group, version string
+				groupVersion := strings.Split(resourceList.GroupVersion, "/")
+				fmt.Printf("groupVersion: %s\n", groupVersion)
+				version = strings.Split(resourceList.GroupVersion, "/")[0]
+				if len(groupVersion) == 2 {
+					group = strings.Split(resourceList.GroupVersion, "/")[0]
+					version = strings.Split(resourceList.GroupVersion, "/")[1]
+				}
+				if len(groupVersion) == 1 {
+					version = strings.Split(resourceList.GroupVersion, "/")[0]
+				}
+				for _, resource := range resourceList.APIResources {
+					colDefinition := tableGenerator.ResourceColumnDefinition(strings.ToLower(resource.Kind))
+					if len(colDefinition) != 0 {
+						defaultResourceTemplateDir := filepath.Join(path, utils.GenerateDirNameByGVK(schema.GroupVersionKind{
+							Group:   group,
+							Version: version,
+							Kind:    resource.Kind,
+						}))
+
+						if err := utils.CreateOrFormatFile(filepath.Join(defaultResourceTemplateDir, "default.tpl"), utils.BuildTableColumnTemplate(colDefinition)); err != nil {
+							return fmt.Errorf("failed to create or update template file: %v", err)
+						}
+					}
 				}
 			}
 			return nil

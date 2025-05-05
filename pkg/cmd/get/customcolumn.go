@@ -14,9 +14,7 @@ import (
 	"strings"
 	"text/template"
 
-	"github.com/kubectl-cwide/pkg/parser"
 	"github.com/liggitt/tabwriter"
-
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -24,6 +22,12 @@ import (
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/jsonpath"
+	k8sprinters "k8s.io/kubernetes/pkg/printers"
+	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
+
+	"github.com/kubectl-cwide/pkg/common"
+	"github.com/kubectl-cwide/pkg/parser"
+	"github.com/kubectl-cwide/pkg/utils"
 )
 
 var jsonRegexp = regexp.MustCompile(`^\{\.?([^{}]+)\}$|^\.?([^{}]+)$`)
@@ -79,7 +83,10 @@ func NewCustomColumnsPrinterFromSpec(spec string, decoder runtime.Decoder, noHea
 		}
 		columns[ix] = Column{Header: colSpec[0], FieldSpec: spec}
 	}
-	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: noHeaders}, nil
+
+	generator := utils.NewTableGenerator().With(printersinternal.AddHandlers)
+
+	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: noHeaders, DefaultTableGenerator: generator}, nil
 }
 
 // NewCustomColumnsPrinterFromTemplate creates a custom columns printer from a template stream.  The template is expected
@@ -136,7 +143,10 @@ func NewCustomColumnsPrinterFromTemplate(templateReader io.Reader, decoder runti
 			FieldSpec: spec,
 		}
 	}
-	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false, Config: restConfig, localTemplate: localTemplate}, nil
+
+	generator := utils.NewTableGenerator().With(printersinternal.AddHandlers)
+
+	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false, Config: restConfig, localTemplate: localTemplate, DefaultTableGenerator: generator}, nil
 }
 
 // Column represents a user specified column
@@ -159,6 +169,7 @@ type CustomColumnsPrinter struct {
 	lastType      reflect.Type
 	Config        *rest.Config
 	localTemplate *template.Template
+	*utils.DefaultTableGenerator
 }
 
 func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error {
@@ -184,12 +195,13 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		fmt.Fprintln(out, strings.Join(headers, "\t"))
 		s.lastType = t
 	}
+
 	parsers := make([]parser.Parser, len(s.Columns))
-	var ageIndex *int
 	for ix, col := range s.Columns {
 		p := parser.NewFieldParser()
-
+		p.Header = col.Header
 		p.IsAGE = col.Header == "AGE"
+		p.IsDefaultPrinterField = col.FieldSpec == fmt.Sprintf("{.%s}", common.DefaultPrinterField)
 
 		if parser.IsTemplate(col.FieldSpec) {
 			var tParser *template.Template
@@ -224,19 +236,19 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 			return err
 		}
 		for ix := range objs {
-			if err := s.printOneObject(objs[ix], parsers, out, ageIndex); err != nil {
+			if err := s.printOneObject(objs[ix], parsers, out); err != nil {
 				return err
 			}
 		}
 	} else {
-		if err := s.printOneObject(obj, parsers, out, ageIndex); err != nil {
+		if err := s.printOneObject(obj, parsers, out); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []parser.Parser, out io.Writer, ageIndex *int) error {
+func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []parser.Parser, out io.Writer) error {
 	columns := make([]string, len(parsers))
 	switch u := obj.(type) {
 	case *metav1.WatchEvent:
@@ -263,10 +275,12 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		}
 	}
 
+	t, _ := s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
+
 	for ix := range parsers {
 		parser := parsers[ix]
 
-		col, err := parser.Parse(obj)
+		col, err := parser.Parse(obj, t)
 		if err != nil {
 			return err
 		}

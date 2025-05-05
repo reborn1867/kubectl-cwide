@@ -9,6 +9,7 @@ import (
 
 	"github.com/Masterminds/sprig/v3"
 	"github.com/kubectl-cwide/pkg/parser/funcs"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/cli-runtime/pkg/printers"
@@ -17,22 +18,38 @@ import (
 )
 
 type Parser interface {
-	Parse(obj runtime.Object) (string, error)
+	Parse(obj runtime.Object, defaultTable *metav1.Table) (string, error)
 }
 
 type FieldParser struct {
 	*jsonpath.JSONPath
 	*template.Template
-	IsAGE  bool
-	Config *rest.Config
+	IsAGE                 bool
+	IsDefaultPrinterField bool
+	Header                string
+	Config                *rest.Config
 }
 
 func NewFieldParser() *FieldParser {
 	return &FieldParser{}
 }
 
-func (p *FieldParser) Parse(obj runtime.Object) (string, error) {
+func (p *FieldParser) Parse(obj runtime.Object, defaultTable *metav1.Table) (string, error) {
 	var result string
+	// DefaultPrinterResult is used to get the default printer result
+	if p.IsDefaultPrinterField {
+		if defaultTable != nil {
+			for idx, column := range defaultTable.ColumnDefinitions {
+				if strings.ToLower(column.Name) == strings.ToLower(p.Header) {
+					if len(defaultTable.Rows) > 0 {
+						result = fmt.Sprint(defaultTable.Rows[0].Cells[idx])
+						break
+					}
+				}
+			}
+		}
+		return result, nil
+	}
 	if p.JSONPath != nil {
 		jpParser := p.JSONPath
 		var values [][]reflect.Value

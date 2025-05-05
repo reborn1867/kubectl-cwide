@@ -112,7 +112,7 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	var crdTemplateDir string
-	crdTemplateDir = utils.GetCRDDirName(infos[0].Object.GetObjectKind().GroupVersionKind())
+	crdTemplateDir = utils.GenerateDirNameByGVK(infos[0].Object.GetObjectKind().GroupVersionKind())
 
 	templateFile := fmt.Sprintf("%s.tpl", o.Template)
 
