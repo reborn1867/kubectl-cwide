@@ -10,6 +10,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
+	"k8s.io/cli-runtime/pkg/resource"
 
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/scheme"
@@ -28,6 +29,7 @@ type GetOptions struct {
 	ExplicitNamespace bool
 	Subresource       string
 	SortBy            string
+	resource.FilenameOptions
 
 	ServerPrint bool
 
@@ -37,6 +39,7 @@ type GetOptions struct {
 	genericiooptions.IOStreams
 
 	Template string
+	Context  string
 }
 
 // NewGetOptions returns a GetOptions with default chunk size 500.
@@ -67,13 +70,21 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 	}
 
 	kubeConfigFlags := genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag().WithDiscoveryBurst(300).WithDiscoveryQPS(50.0)
+
+	if o.Context != "" {
+		kubeConfigFlags.Context = &o.Context
+	}
+
 	matchVersionKubeConfigFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
 	f := cmdutil.NewFactory(matchVersionKubeConfigFlags)
 
-	o.Namespace, o.ExplicitNamespace, err = f.ToRawKubeConfigLoader().Namespace()
-	if err != nil {
-		return err
+	if o.Namespace == "" {
+		o.Namespace, o.ExplicitNamespace, err = f.ToRawKubeConfigLoader().Namespace()
+		if err != nil {
+			return err
+		}
 	}
+
 	if o.AllNamespaces {
 		o.ExplicitNamespace = false
 	}
@@ -85,7 +96,7 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 		DefaultNamespace().
 		NamespaceParam(o.Namespace).
 		AllNamespaces(o.AllNamespaces).
-		// FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
+		FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
 		LabelSelectorParam(o.LabelSelector).
 		FieldSelectorParam(o.FieldSelector).
 		Subresource(o.Subresource).
@@ -162,10 +173,12 @@ func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	cmd.Flags().BoolVar(&o.IgnoreNotFound, "ignore-not-found", o.IgnoreNotFound, "If the requested object does not exist the command will return exit code 0.")
 	cmd.Flags().StringVar(&o.FieldSelector, "field-selector", o.FieldSelector, "Selector (field query) to filter on, supports '=', '==', and '!='.(e.g. --field-selector key1=value1,key2=value2). The server only supports a limited number of field queries per type.")
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", o.AllNamespaces, "If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even if specified with --namespace.")
-	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Template string to use when printing objects. Use \"\" to disable the template.")
 	cmdutil.AddChunkSizeFlag(cmd, &o.ChunkSize)
 	cmdutil.AddLabelSelectorFlagVar(cmd, &o.LabelSelector)
 	cmdutil.AddSubresourceFlags(cmd, &o.Subresource, "If specified, gets the subresource of the requested object.")
 
+	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Template string to use when printing objects. Use \"\" to disable the template.")
+	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request. If not set, the current namespace in kubeconfig is used. Use --all-namespaces to ignore this flag.")
+	cmd.Flags().StringVar(&o.Context, "context", "", "kubeconfig context to use for this CLI request. If not set, the current context in kubeconfig is used.")
 	return cmd
 }
