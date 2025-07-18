@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 	"text/template"
 
@@ -228,13 +229,16 @@ func tplFun(parent *template.Template, includedNames map[string]int, strict bool
 }
 
 func progressBar(currentRaw, totalRaw interface{}) string {
-	current, ok := currentRaw.(int64)
-	if !ok {
+	// convert interface to numbers including int, float
+	if currentRaw == nil || totalRaw == nil {
 		return ""
 	}
-
-	total, ok := totalRaw.(int64)
-	if !ok {
+	current, err := strconv.ParseFloat(fmt.Sprintf("%v", currentRaw), 64)
+	if err != nil {
+		return ""
+	}
+	total, err := strconv.ParseFloat(fmt.Sprintf("%v", totalRaw), 64)
+	if err != nil {
 		return ""
 	}
 
