@@ -9,11 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"reflect"
 	"regexp"
 	"strings"
 	"text/template"
 
+	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/liggitt/tabwriter"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -146,7 +148,7 @@ func NewCustomColumnsPrinterFromTemplate(templateReader io.Reader, decoder runti
 
 	generator := utils.NewTableGenerator().With(printersinternal.AddHandlers)
 
-	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false, Config: restConfig, localTemplate: localTemplate, DefaultTableGenerator: generator}, nil
+	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false, Config: restConfig, localTemplate: localTemplate, DefaultTableGenerator: generator, Headers: headers}, nil
 }
 
 // Column represents a user specified column
@@ -170,6 +172,20 @@ type CustomColumnsPrinter struct {
 	Config        *rest.Config
 	localTemplate *template.Template
 	*utils.DefaultTableGenerator
+	Headers     []string // - Headers is used to store the headers for the custom columns
+	CustomTable table.Writer
+}
+
+func (s *CustomColumnsPrinter) WithCustomTable() *CustomColumnsPrinter {
+	t := table.NewWriter()
+	t.SetOutputMirror(os.Stdout)
+	var customHeaders table.Row
+	for _, header := range s.Headers {
+		customHeaders = append(customHeaders, header)
+	}
+	t.AppendHeader(customHeaders)
+	s.CustomTable = t
+	return s
 }
 
 func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error {
@@ -186,14 +202,17 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		defer w.Flush()
 	}
 
-	t := reflect.TypeOf(obj)
-	if !s.NoHeaders && t != s.lastType {
-		headers := make([]string, len(s.Columns))
-		for ix := range s.Columns {
-			headers[ix] = s.Columns[ix].Header
+	if s.CustomTable == nil {
+		t := reflect.TypeOf(obj)
+		if !s.NoHeaders && t != s.lastType {
+			headers := make([]string, len(s.Columns))
+			for ix := range s.Columns {
+				headers[ix] = s.Columns[ix].Header
+			}
+
+			fmt.Fprintln(out, strings.Join(headers, "\t"))
+			s.lastType = t
 		}
-		fmt.Fprintln(out, strings.Join(headers, "\t"))
-		s.lastType = t
 	}
 
 	parsers := make([]parser.Parser, len(s.Columns))
@@ -245,6 +264,7 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 			return err
 		}
 	}
+
 	return nil
 }
 
@@ -288,7 +308,34 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		columns[ix] = col
 	}
 
-	fmt.Fprintln(out, strings.Join(columns, "\t"))
+	var multiLinesColumns [][]string
+	// if the column has multiple lines (e.g. a template that outputs multiple lines), we need to split it
+	var maxLen int
+	for _, col := range columns {
+		lines := strings.Split(col, "\n")
+		maxLen = max(maxLen, len(lines))
+		multiLinesColumns = append(multiLinesColumns, lines)
+	}
+
+	if s.CustomTable != nil {
+		var row table.Row
+		for idx := range columns {
+			row = append(row, columns[idx])
+		}
+		s.CustomTable.AppendRow(row)
+	} else {
+		for i := 0; i < maxLen; i++ {
+			var lineColumns []string
+			for _, multiLinesCol := range multiLinesColumns {
+				if i < len(multiLinesCol) {
+					lineColumns = append(lineColumns, multiLinesCol[i])
+				} else {
+					lineColumns = append(lineColumns, "")
+				}
+			}
+			fmt.Fprintln(out, strings.Join(lineColumns, "\t"))
+		}
+	}
 	return nil
 }
 

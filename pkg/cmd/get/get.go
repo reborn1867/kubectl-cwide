@@ -1,19 +1,28 @@
 package get
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/api/meta"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/cli-runtime/pkg/resource"
+	watchtools "k8s.io/client-go/tools/watch"
+	"k8s.io/utils/ptr"
 
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
 	"k8s.io/kubectl/pkg/scheme"
+	"k8s.io/kubectl/pkg/util/i18n"
+	"k8s.io/kubectl/pkg/util/interrupt"
 )
 
 type GetOptions struct {
@@ -21,6 +30,8 @@ type GetOptions struct {
 	Watch     bool
 	WatchOnly bool
 	ChunkSize int64
+
+	OutputWatchEvents bool
 
 	LabelSelector     string
 	FieldSelector     string
@@ -38,8 +49,10 @@ type GetOptions struct {
 
 	genericiooptions.IOStreams
 
-	Template string
-	Context  string
+	Template          string
+	Context           string
+	TemplateRootPath  string
+	EnableCustomTable bool
 }
 
 // NewGetOptions returns a GetOptions with default chunk size 500.
@@ -65,9 +78,7 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if o.Watch || o.WatchOnly {
-		// TODO : add watch support
-	}
+	o.TemplateRootPath = rootPath
 
 	kubeConfigFlags := genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag().WithDiscoveryBurst(300).WithDiscoveryQPS(50.0)
 
@@ -77,6 +88,10 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 
 	matchVersionKubeConfigFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
 	f := cmdutil.NewFactory(matchVersionKubeConfigFlags)
+
+	if o.Watch || o.WatchOnly {
+		return o.watch(f, args)
+	}
 
 	if o.Namespace == "" {
 		o.Namespace, o.ExplicitNamespace, err = f.ToRawKubeConfigLoader().Namespace()
@@ -144,6 +159,10 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("error creating printer from template: %v\n", err)
 	}
 
+	if o.EnableCustomTable {
+		printer.WithCustomTable()
+	}
+
 	printer.NoHeaders = o.NoHeaders
 
 	w := printers.GetNewTabWriter(os.Stdout)
@@ -152,8 +171,144 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("error printing object: %v\n", err)
 		}
 	}
-	w.Flush()
 
+	if printer.CustomTable != nil {
+		printer.CustomTable.Render()
+	} else {
+		w.Flush()
+	}
+
+	return nil
+}
+
+func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
+	r := f.NewBuilder().
+		Unstructured().
+		DefaultNamespace().
+		NamespaceParam(o.Namespace).
+		AllNamespaces(o.AllNamespaces).
+		FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
+		LabelSelectorParam(o.LabelSelector).
+		FieldSelectorParam(o.FieldSelector).
+		Subresource(o.Subresource).
+		RequestChunksOf(o.ChunkSize).
+		// TransformRequests(o.transformRequests).
+		ResourceTypeOrNameArgs(true, args...).
+		ContinueOnError().
+		Latest().
+		Flatten().
+		Do()
+	if err := r.Err(); err != nil {
+		return err
+	}
+	infos, err := r.Infos()
+	if err != nil {
+		return err
+	}
+	if multipleGVKsRequested(infos) {
+		return i18n.Errorf("watch is only supported on individual resources and resource collections - more than 1 resource was found")
+	}
+
+	var crdTemplateDir string
+	crdTemplateDir = utils.GenerateDirNameByGVK(infos[0].Object.GetObjectKind().GroupVersionKind())
+
+	templateFile := fmt.Sprintf("%s.tpl", o.Template)
+
+	file, err := os.Open(filepath.Join(o.TemplateRootPath, crdTemplateDir, templateFile))
+	if err != nil {
+		return fmt.Errorf("error reading template %s, %v\n", filepath.Join(o.TemplateRootPath, crdTemplateDir, templateFile), err)
+	}
+
+	decoder := scheme.Codecs.UniversalDecoder(scheme.Scheme.PrioritizedVersionsAllGroups()...)
+
+	restConfig, err := f.ToRESTConfig()
+	if err != nil {
+		return fmt.Errorf("error getting rest config: %v\n", err)
+	}
+	outputObjects := ptr.To(!o.WatchOnly)
+	printer, err := NewCustomColumnsPrinterFromTemplate(file, decoder, restConfig)
+	if err != nil {
+		return fmt.Errorf("error creating printer from template: %v\n", err)
+	}
+
+	if o.EnableCustomTable {
+		printer.WithCustomTable()
+	}
+
+	// print the current object
+	printer.NoHeaders = o.NoHeaders
+
+	w := printers.GetNewTabWriter(os.Stdout)
+	for _, info := range infos {
+		if err := printer.PrintObj(info.Object, w); err != nil {
+			return fmt.Errorf("error printing object: %v\n", err)
+		}
+	}
+
+	if printer.CustomTable != nil {
+		printer.CustomTable.Render()
+	} else {
+		w.Flush()
+	}
+
+	obj, err := r.Object()
+	if err != nil {
+		return err
+	}
+	// watching from resourceVersion 0, starts the watch at ~now and
+	// will return an initial watch event.  Starting form ~now, rather
+	// the rv of the object will insure that we start the watch from
+	// inside the watch window, which the rv of the object might not be.
+	rv := "0"
+	isList := meta.IsListType(obj)
+	if isList {
+		// the resourceVersion of list objects is ~now but won't return
+		// an initial watch event
+		rv, err = meta.NewAccessor().ResourceVersion(obj)
+		if err != nil {
+			return err
+		}
+	}
+
+	if isList {
+		// we can start outputting objects now, watches started from lists don't emit synthetic added events
+		*outputObjects = true
+	} else {
+		// suppress output, since watches started for individual items emit a synthetic ADDED event first
+		*outputObjects = false
+	}
+
+	// print watched changes
+	watcher, err := r.Watch(rv)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	intr := interrupt.New(nil, cancel)
+	intr.Run(func() error {
+		_, err := watchtools.UntilWithoutRetry(ctx, watcher, func(e watch.Event) (bool, error) {
+			objToPrint := e.Object
+			if o.OutputWatchEvents {
+				objToPrint = &metav1.WatchEvent{Type: string(e.Type), Object: runtime.RawExtension{Object: objToPrint}}
+			}
+
+			if err := printer.PrintObj(objToPrint, w); err != nil {
+				return false, err
+			}
+
+			if printer.CustomTable != nil {
+				printer.CustomTable.Render()
+			} else {
+				w.Flush()
+			}
+			// after processing at least one event, start outputting objects
+			*outputObjects = true
+			return false, nil
+		})
+		return err
+	})
 	return nil
 }
 
@@ -180,5 +335,19 @@ func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Template string to use when printing objects. Use \"\" to disable the template.")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request. If not set, the current namespace in kubeconfig is used. Use --all-namespaces to ignore this flag.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "kubeconfig context to use for this CLI request. If not set, the current context in kubeconfig is used.")
+	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output. If set, the output will be formatted as a custom table based on the provided template.")
 	return cmd
+}
+
+func multipleGVKsRequested(infos []*resource.Info) bool {
+	if len(infos) < 2 {
+		return false
+	}
+	gvk := infos[0].Mapping.GroupVersionKind
+	for _, info := range infos {
+		if info.Mapping.GroupVersionKind != gvk {
+			return true
+		}
+	}
+	return false
 }
