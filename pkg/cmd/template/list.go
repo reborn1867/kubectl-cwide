@@ -12,47 +12,50 @@ import (
 func NewCmdTemplateList() *cobra.Command {
 	templateCMD := &cobra.Command{
 		Use:   "list",
-		Short: "cwide template list",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			var path string
-			if cmd.Flag("template-path").Changed {
-				path = cmd.Flag("template-path").Value.String()
-			} else {
-				var err error
-				// get template path from config.yaml
-				path, err = utils.GetTemplatePathFromConfig()
-				if err != nil {
-					return err
-				}
-			}
+		Short: "List available templates for a resource type",
+		Long: `List all column templates available for the specified resource type.
 
-			absPath, err := filepath.Abs(path)
+Templates are discovered from both .yaml and .tpl files in the template
+directory. Duplicates (same name, different extension) are shown once.`,
+		Example: `  # List all templates for pods
+  kubectl cwide template list -r pod
+
+  # List templates from a specific directory
+  kubectl cwide template list -r deployment --template-path ~/my-templates`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			absPath, err := utils.ResolveTemplatePath(cmd)
 			if err != nil {
-				return fmt.Errorf("failed to get absolute path: %v", err)
+				return fmt.Errorf("failed to resolve template path: %w", err)
 			}
 
 			resourceType := cmd.Flag("resource").Value.String()
 
-			pattern := filepath.Join(absPath, fmt.Sprintf("%s-*/*.tpl", resourceType))
-			// list all files in the directory
-			files, err := filepath.Glob(pattern)
-			if err != nil {
-				return fmt.Errorf("failed to find template path: %v", err)
+			// list templates from both .yaml and .tpl files, deduplicating by name
+			seen := make(map[string]bool)
+			for _, ext := range []string{"*.yaml", "*.tpl"} {
+				pattern := filepath.Join(absPath, fmt.Sprintf("%s-*/%s", resourceType, ext))
+				files, err := filepath.Glob(pattern)
+				if err != nil {
+					return fmt.Errorf("failed to search for templates: %w", err)
+				}
+				for _, file := range files {
+					name := strings.TrimSuffix(filepath.Base(file), filepath.Ext(file))
+					if !seen[name] {
+						seen[name] = true
+						fmt.Println(name)
+					}
+				}
 			}
 
-			if len(files) == 0 {
-				return fmt.Errorf("no template found for resource type: %s", resourceType)
-			}
-
-			for _, file := range files {
-				fmt.Println(strings.Split(filepath.Base(file), ".")[0])
+			if len(seen) == 0 {
+				return fmt.Errorf("no templates found for resource type: %s", resourceType)
 			}
 
 			return nil
 		},
 	}
 
-	templateCMD.Flags().StringP("resource", "r", "", "resource type of custom column templates to list")
+	templateCMD.Flags().StringP("resource", "r", "", "Resource type to list templates for (e.g. pod, deployment)")
 	templateCMD.MarkFlagRequired("resource")
 
 	return templateCMD

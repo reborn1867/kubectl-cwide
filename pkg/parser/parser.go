@@ -100,7 +100,10 @@ func (p *FieldParser) Parse(obj runtime.Object, defaultTable *metav1.Table) (str
 }
 
 func GetFuncMap(cfg *rest.Config) template.FuncMap {
-	m := funcs.DefaultMap
+	m := make(template.FuncMap, len(funcs.DefaultMap))
+	for k, v := range funcs.DefaultMap {
+		m[k] = v
+	}
 
 	for k, v := range sprig.TxtFuncMap() {
 		m[k] = v
@@ -115,7 +118,7 @@ func IsTemplate(template string) bool {
 	return strings.HasPrefix(template, "{{") && strings.HasSuffix(template, "}}")
 }
 
-// age calculates the age of a resource based on its creation time in RFC3393.
+// age calculates the age of a resource based on its creation time in RFC3339.
 func age(creationTime string) string {
 	t, err := time.Parse(time.RFC3339, creationTime)
 	if err != nil {

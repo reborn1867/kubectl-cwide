@@ -9,6 +9,7 @@ import (
 
 	"github.com/kubectl-cwide/pkg/common"
 	"github.com/kubectl-cwide/pkg/models"
+	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	v1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -16,7 +17,7 @@ import (
 )
 
 // create a file if not exists, create parent directories if not exists
-func CreateFileIfNotExits(path string, content []byte) error {
+func CreateFileIfNotExists(path string, content []byte) error {
 	// Create parent directories if not exists
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
@@ -191,6 +192,48 @@ func GenerateDirNameByGVK(gvk schema.GroupVersionKind) string {
 	return strings.ToLower(fmt.Sprintf("%s-%s-%s", gvk.Kind, gvk.Group, gvk.Version))
 }
 
+// BuildYAMLColumnTemplate generates a YAML template from CRD AdditionalPrinterColumns.
+func BuildYAMLColumnTemplate(columns []v1.CustomResourceColumnDefinition) ([]byte, error) {
+	tmpl := models.YAMLTemplate{
+		Columns: make([]models.YAMLColumn, len(columns)),
+	}
+	for i, col := range columns {
+		tmpl.Columns[i] = models.YAMLColumn{
+			Header:    strings.ToUpper(col.Name),
+			FieldSpec: col.JSONPath,
+		}
+	}
+	return yaml.Marshal(&tmpl)
+}
+
+// BuildYAMLTableColumnTemplate generates a YAML template from default k8s table column definitions.
+func BuildYAMLTableColumnTemplate(columns []metav1.TableColumnDefinition) ([]byte, error) {
+	tmpl := models.YAMLTemplate{
+		Columns: make([]models.YAMLColumn, len(columns)),
+	}
+	for i, col := range columns {
+		tmpl.Columns[i] = models.YAMLColumn{
+			Header:    strings.ToUpper(strings.ReplaceAll(col.Name, " ", "_")),
+			FieldSpec: common.DefaultPrinterField,
+		}
+	}
+	return yaml.Marshal(&tmpl)
+}
+
+// CreateOrFormatYAMLFile creates a YAML template file or preserves the existing one.
+func CreateOrFormatYAMLFile(path string, content []byte) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+
+	// If file already exists, preserve user edits
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	}
+
+	return os.WriteFile(path, content, 0644)
+}
+
 // get template path from config.yaml
 func GetTemplatePathFromConfig() (string, error) {
 
@@ -223,4 +266,14 @@ func GetTemplatePathFromConfig() (string, error) {
 func CheckFileExists(path string) bool {
 	_, err := os.Stat(path)
 	return !os.IsNotExist(err)
+}
+
+// ResolveTemplatePath returns the absolute template root path by checking
+// the --template-path flag first, then falling back to the config file.
+func ResolveTemplatePath(cmd *cobra.Command) (string, error) {
+	if cmd.Flag("template-path") != nil && cmd.Flag("template-path").Changed {
+		p := cmd.Flag("template-path").Value.String()
+		return filepath.Abs(p)
+	}
+	return GetTemplatePathFromConfig()
 }

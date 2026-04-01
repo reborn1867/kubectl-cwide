@@ -16,6 +16,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/cli-runtime/pkg/resource"
+	"k8s.io/client-go/rest"
 	watchtools "k8s.io/client-go/tools/watch"
 	"k8s.io/utils/ptr"
 
@@ -53,50 +54,67 @@ type GetOptions struct {
 	Context           string
 	TemplateRootPath  string
 	EnableCustomTable bool
+
+	factory cmdutil.Factory
+	args    []string
 }
 
 // NewGetOptions returns a GetOptions with default chunk size 500.
 func NewGetOptions(streams genericiooptions.IOStreams) *GetOptions {
 	return &GetOptions{
-
 		IOStreams:   streams,
-		ChunkSize:   cmdutil.DefaultChunkSize,
+		ChunkSize:  cmdutil.DefaultChunkSize,
 		ServerPrint: true,
 	}
 }
 
-func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
-	var rootPath string
-	var err error
-	if cmd.Flag("template-path").Changed {
-		rootPath = cmd.Flag("template-path").Value.String()
-	} else {
-		// get template path from config.yaml
-		rootPath, err = utils.GetTemplatePathFromConfig()
-		if err != nil {
-			return err
-		}
+// resolveTemplatePrinter finds the template file (.yaml first, then .tpl) and creates the appropriate printer.
+func resolveTemplatePrinter(rootPath, crdTemplateDir, templateName string, decoder runtime.Decoder, restConfig *rest.Config) (*CustomColumnsPrinter, error) {
+	dir := filepath.Join(rootPath, crdTemplateDir)
+
+	// Try .yaml first
+	yamlPath := filepath.Join(dir, templateName+".yaml")
+	if data, err := os.ReadFile(yamlPath); err == nil {
+		return NewCustomColumnsPrinterFromYAML(data, decoder, restConfig)
 	}
 
+	// Fall back to .tpl
+	tplPath := filepath.Join(dir, templateName+".tpl")
+	file, err := os.Open(tplPath)
+	if err != nil {
+		return nil, fmt.Errorf("template not found (tried %s.yaml and %s.tpl in %s)", templateName, templateName, dir)
+	}
+	defer file.Close()
+
+	return NewCustomColumnsPrinterFromTemplate(file, decoder, restConfig)
+}
+
+// Complete resolves flags and sets up the factory.
+func (o *GetOptions) Complete(cmd *cobra.Command, args []string) error {
+	o.args = args
+
+	rootPath, err := utils.ResolveTemplatePath(cmd)
+	if err != nil {
+		return fmt.Errorf("failed to resolve template path: %w", err)
+	}
 	o.TemplateRootPath = rootPath
 
 	kubeConfigFlags := genericclioptions.NewConfigFlags(true).WithDeprecatedPasswordFlag().WithDiscoveryBurst(300).WithDiscoveryQPS(50.0)
 
+	if v := cmd.Flag("kubeconfig"); v != nil && v.Changed {
+		kubeConfigFlags.KubeConfig = ptr.To(v.Value.String())
+	}
 	if o.Context != "" {
 		kubeConfigFlags.Context = &o.Context
 	}
 
 	matchVersionKubeConfigFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
-	f := cmdutil.NewFactory(matchVersionKubeConfigFlags)
-
-	if o.Watch || o.WatchOnly {
-		return o.watch(f, args)
-	}
+	o.factory = cmdutil.NewFactory(matchVersionKubeConfigFlags)
 
 	if o.Namespace == "" {
-		o.Namespace, o.ExplicitNamespace, err = f.ToRawKubeConfigLoader().Namespace()
+		o.Namespace, o.ExplicitNamespace, err = o.factory.ToRawKubeConfigLoader().Namespace()
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to resolve namespace: %w", err)
 		}
 	}
 
@@ -106,22 +124,38 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 
 	o.NoHeaders = cmdutil.GetFlagBool(cmd, "no-headers")
 
-	r := f.NewBuilder().
-		Unstructured().
-		DefaultNamespace().
-		NamespaceParam(o.Namespace).
-		AllNamespaces(o.AllNamespaces).
-		FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
-		LabelSelectorParam(o.LabelSelector).
-		FieldSelectorParam(o.FieldSelector).
-		Subresource(o.Subresource).
-		RequestChunksOf(o.ChunkSize).
-		// TransformRequests(o.transformRequests).
-		ResourceTypeOrNameArgs(true, args...).
-		ContinueOnError().
-		Latest().
-		Flatten().
-		Do()
+	return nil
+}
+
+// Validate checks that the resolved options are consistent.
+func (o *GetOptions) Validate() error {
+	if o.TemplateRootPath == "" {
+		return fmt.Errorf("template path is required: use --template-path or run 'init' first")
+	}
+	if o.WatchOnly && o.Watch {
+		return fmt.Errorf("--watch and --watch-only are mutually exclusive")
+	}
+	return nil
+}
+
+// Run is the cobra RunE entrypoint. It calls Complete, Validate, then executes.
+func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
+	if err := o.Complete(cmd, args); err != nil {
+		return err
+	}
+	if err := o.Validate(); err != nil {
+		return err
+	}
+
+	if o.Watch || o.WatchOnly {
+		return o.watch()
+	}
+
+	return o.list()
+}
+
+func (o *GetOptions) list() error {
+	r := o.buildRequest()
 
 	if err := r.Err(); err != nil {
 		return err
@@ -129,7 +163,7 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 
 	infos, err := r.Infos()
 	if err != nil {
-		return fmt.Errorf("error fetching resources: %v\n", err)
+		return fmt.Errorf("failed to fetch resources: %w", err)
 	}
 
 	if len(infos) == 0 {
@@ -137,38 +171,15 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	var crdTemplateDir string
-	crdTemplateDir = utils.GenerateDirNameByGVK(infos[0].Object.GetObjectKind().GroupVersionKind())
-
-	templateFile := fmt.Sprintf("%s.tpl", o.Template)
-
-	file, err := os.Open(filepath.Join(rootPath, crdTemplateDir, templateFile))
+	printer, err := o.createPrinter(infos)
 	if err != nil {
-		return fmt.Errorf("error reading template %s, %v\n", filepath.Join(rootPath, crdTemplateDir, templateFile), err)
+		return err
 	}
-
-	decoder := scheme.Codecs.UniversalDecoder(scheme.Scheme.PrioritizedVersionsAllGroups()...)
-
-	restConfig, err := f.ToRESTConfig()
-	if err != nil {
-		return fmt.Errorf("error getting rest config: %v\n", err)
-	}
-
-	printer, err := NewCustomColumnsPrinterFromTemplate(file, decoder, restConfig)
-	if err != nil {
-		return fmt.Errorf("error creating printer from template: %v\n", err)
-	}
-
-	if o.EnableCustomTable {
-		printer.WithCustomTable()
-	}
-
-	printer.NoHeaders = o.NoHeaders
 
 	w := printers.GetNewTabWriter(os.Stdout)
 	for _, info := range infos {
 		if err := printer.PrintObj(info.Object, w); err != nil {
-			return fmt.Errorf("error printing object: %v\n", err)
+			return fmt.Errorf("failed to print object: %w", err)
 		}
 	}
 
@@ -181,26 +192,13 @@ func (o *GetOptions) Run(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
-	r := f.NewBuilder().
-		Unstructured().
-		DefaultNamespace().
-		NamespaceParam(o.Namespace).
-		AllNamespaces(o.AllNamespaces).
-		FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
-		LabelSelectorParam(o.LabelSelector).
-		FieldSelectorParam(o.FieldSelector).
-		Subresource(o.Subresource).
-		RequestChunksOf(o.ChunkSize).
-		// TransformRequests(o.transformRequests).
-		ResourceTypeOrNameArgs(true, args...).
-		ContinueOnError().
-		Latest().
-		Flatten().
-		Do()
+func (o *GetOptions) watch() error {
+	r := o.buildRequest()
+
 	if err := r.Err(); err != nil {
 		return err
 	}
+
 	infos, err := r.Infos()
 	if err != nil {
 		return err
@@ -209,39 +207,23 @@ func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
 		return i18n.Errorf("watch is only supported on individual resources and resource collections - more than 1 resource was found")
 	}
 
-	var crdTemplateDir string
-	crdTemplateDir = utils.GenerateDirNameByGVK(infos[0].Object.GetObjectKind().GroupVersionKind())
-
-	templateFile := fmt.Sprintf("%s.tpl", o.Template)
-
-	file, err := os.Open(filepath.Join(o.TemplateRootPath, crdTemplateDir, templateFile))
-	if err != nil {
-		return fmt.Errorf("error reading template %s, %v\n", filepath.Join(o.TemplateRootPath, crdTemplateDir, templateFile), err)
+	if len(infos) == 0 {
+		fmt.Fprintf(o.ErrOut, "No resources found in %s namespace.\n", o.Namespace)
+		return nil
 	}
 
-	decoder := scheme.Codecs.UniversalDecoder(scheme.Scheme.PrioritizedVersionsAllGroups()...)
-
-	restConfig, err := f.ToRESTConfig()
+	printer, err := o.createPrinter(infos)
 	if err != nil {
-		return fmt.Errorf("error getting rest config: %v\n", err)
+		return err
 	}
+
 	outputObjects := ptr.To(!o.WatchOnly)
-	printer, err := NewCustomColumnsPrinterFromTemplate(file, decoder, restConfig)
-	if err != nil {
-		return fmt.Errorf("error creating printer from template: %v\n", err)
-	}
 
-	if o.EnableCustomTable {
-		printer.WithCustomTable()
-	}
-
-	// print the current object
-	printer.NoHeaders = o.NoHeaders
-
+	// print the current objects
 	w := printers.GetNewTabWriter(os.Stdout)
 	for _, info := range infos {
 		if err := printer.PrintObj(info.Object, w); err != nil {
-			return fmt.Errorf("error printing object: %v\n", err)
+			return fmt.Errorf("failed to print object: %w", err)
 		}
 	}
 
@@ -255,15 +237,9 @@ func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
 	if err != nil {
 		return err
 	}
-	// watching from resourceVersion 0, starts the watch at ~now and
-	// will return an initial watch event.  Starting form ~now, rather
-	// the rv of the object will insure that we start the watch from
-	// inside the watch window, which the rv of the object might not be.
 	rv := "0"
 	isList := meta.IsListType(obj)
 	if isList {
-		// the resourceVersion of list objects is ~now but won't return
-		// an initial watch event
 		rv, err = meta.NewAccessor().ResourceVersion(obj)
 		if err != nil {
 			return err
@@ -271,14 +247,11 @@ func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
 	}
 
 	if isList {
-		// we can start outputting objects now, watches started from lists don't emit synthetic added events
 		*outputObjects = true
 	} else {
-		// suppress output, since watches started for individual items emit a synthetic ADDED event first
 		*outputObjects = false
 	}
 
-	// print watched changes
 	watcher, err := r.Watch(rv)
 	if err != nil {
 		return err
@@ -303,7 +276,6 @@ func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
 			} else {
 				w.Flush()
 			}
-			// after processing at least one event, start outputting objects
 			*outputObjects = true
 			return false, nil
 		})
@@ -312,17 +284,78 @@ func (o *GetOptions) watch(f cmdutil.Factory, args []string) error {
 	return nil
 }
 
+func (o *GetOptions) buildRequest() *resource.Result {
+	return o.factory.NewBuilder().
+		Unstructured().
+		DefaultNamespace().
+		NamespaceParam(o.Namespace).
+		AllNamespaces(o.AllNamespaces).
+		FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
+		LabelSelectorParam(o.LabelSelector).
+		FieldSelectorParam(o.FieldSelector).
+		Subresource(o.Subresource).
+		RequestChunksOf(o.ChunkSize).
+		ResourceTypeOrNameArgs(true, o.args...).
+		ContinueOnError().
+		Latest().
+		Flatten().
+		Do()
+}
+
+func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinter, error) {
+	crdTemplateDir := utils.GenerateDirNameByGVK(infos[0].Object.GetObjectKind().GroupVersionKind())
+
+	decoder := scheme.Codecs.UniversalDecoder(scheme.Scheme.PrioritizedVersionsAllGroups()...)
+
+	restConfig, err := o.factory.ToRESTConfig()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get REST config: %w", err)
+	}
+
+	printer, err := resolveTemplatePrinter(o.TemplateRootPath, crdTemplateDir, o.Template, decoder, restConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	if o.EnableCustomTable {
+		printer.WithCustomTable()
+	}
+	printer.NoHeaders = o.NoHeaders
+
+	return printer, nil
+}
+
 func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	o := NewGetOptions(streams)
 
 	cmd := &cobra.Command{
-		Use:   "get",
-		Short: "get k8s resources in custom wide output format",
-		RunE:  o.Run,
+		Use:   "get TYPE [NAME ...] [flags]",
+		Short: "Display resources in custom wide output format",
+		Long: `Display one or more resources using custom column templates.
+
+Templates are resolved from the template root directory (set via --template-path or
+the config file created by 'init'). For each resource kind, cwide looks for a template
+in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
+		Example: `  # List pods using the default template
+  kubectl cwide get pods
+
+  # Get a specific pod in a namespace
+  kubectl cwide get pod my-pod -n my-namespace
+
+  # Use a custom template
+  kubectl cwide get deployments -t my-template
+
+  # Watch pods
+  kubectl cwide get pods -w
+
+  # List across all namespaces
+  kubectl cwide get pods -A`,
+		Args: cobra.MinimumNArgs(1),
+		RunE: o.Run,
 	}
 
 	cmd.Flags().BoolVar(&o.NoHeaders, "no-headers", o.NoHeaders, "When using the default or custom-column output format, don't print headers (default print headers).")
-	cmd.Flags().StringVar(&o.Raw, "raw", o.Raw, "Raw URI to request from the server.  Uses the transport specified by the kubeconfig file.")
+	cmd.Flags().StringVar(&o.Raw, "raw", o.Raw, "Raw URI to request from the server. Uses the transport specified by the kubeconfig file.")
 	cmd.Flags().BoolVarP(&o.Watch, "watch", "w", o.Watch, "After listing/getting the requested object, watch for changes.")
 	cmd.Flags().BoolVar(&o.WatchOnly, "watch-only", o.WatchOnly, "Watch for changes to the requested object(s), without listing/getting first.")
 	cmd.Flags().BoolVar(&o.IgnoreNotFound, "ignore-not-found", o.IgnoreNotFound, "If the requested object does not exist the command will return exit code 0.")
@@ -332,10 +365,10 @@ func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	cmdutil.AddLabelSelectorFlagVar(cmd, &o.LabelSelector)
 	cmdutil.AddSubresourceFlags(cmd, &o.Subresource, "If specified, gets the subresource of the requested object.")
 
-	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Template string to use when printing objects. Use \"\" to disable the template.")
-	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request. If not set, the current namespace in kubeconfig is used. Use --all-namespaces to ignore this flag.")
-	cmd.Flags().StringVar(&o.Context, "context", "", "kubeconfig context to use for this CLI request. If not set, the current context in kubeconfig is used.")
-	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output. If set, the output will be formatted as a custom table based on the provided template.")
+	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Name of the column template to use (without extension).")
+	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
+	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
+	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output with borders.")
 	return cmd
 }
 

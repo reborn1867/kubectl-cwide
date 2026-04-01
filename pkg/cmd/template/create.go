@@ -4,68 +4,74 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 func NewCmdCreate() *cobra.Command {
 	createCMD := &cobra.Command{
 		Use:   "create",
-		Short: "cwide template create",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			// create a new template file in given path
-			var path string
-			if cmd.Flag("template-path").Changed {
-				path = cmd.Flag("template-path").Value.String()
-			} else {
-				var err error
-				// get template path from config.yaml
-				path, err = utils.GetTemplatePathFromConfig()
-				if err != nil {
-					return err
-				}
-			}
+		Short: "Create a new column template",
+		Long: `Scaffold a new YAML column template for the specified resource type.
 
-			absPath, err := filepath.Abs(path)
+The template is created with a single NAME column as a starting point.
+Edit the generated file to add more columns.`,
+		Example: `  # Create a template called "custom" for pods
+  kubectl cwide template create -r pod -n custom
+
+  # Create a template in a specific directory
+  kubectl cwide template create -r deployment -n minimal --template-path ~/my-templates`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			absPath, err := utils.ResolveTemplatePath(cmd)
 			if err != nil {
-				return fmt.Errorf("failed to get absolute path: %v", err)
+				return fmt.Errorf("failed to resolve template path: %w", err)
 			}
 
 			resourceType := cmd.Flag("resource").Value.String()
 
-			// TODO: need a better way to get the template path
 			pattern := filepath.Join(absPath, fmt.Sprintf("%s-*", resourceType))
-			// list all files in the directory
 			files, err := filepath.Glob(pattern)
 			if err != nil {
-				return fmt.Errorf("failed to find template path: %v", err)
+				return fmt.Errorf("failed to search for resource directories: %w", err)
 			}
 
 			if len(files) == 0 {
-				return fmt.Errorf("no template found for resource type: %s", resourceType)
+				return fmt.Errorf("no resource directory found for %q; run 'init' first", resourceType)
 			}
 
 			if len(files) != 1 {
-				return fmt.Errorf("found multiple templates for resource type: %s", resourceType)
+				return fmt.Errorf("found multiple directories for %q: %v; specify a more precise resource type", resourceType, files)
 			}
 
-			// get the template name from the command line
 			name := cmd.Flag("name").Value.String()
+			newFilePath := filepath.Join(files[0], fmt.Sprintf("%s.yaml", name))
 
-			newFilePath := filepath.Join(files[0], fmt.Sprintf("%s.tpl", name))
-
-			// create a new template file
-			if err := utils.CreateFileIfNotExits(newFilePath, []byte("")); err != nil {
-				return fmt.Errorf("failed to create template file: %v", err)
+			if utils.CheckFileExists(newFilePath) {
+				return fmt.Errorf("template %q already exists at %s", name, newFilePath)
 			}
-			fmt.Printf("created template file: %s\n", newFilePath)
+
+			scaffold, err := yaml.Marshal(&models.YAMLTemplate{
+				Columns: []models.YAMLColumn{
+					{Header: "NAME", FieldSpec: ".metadata.name"},
+				},
+			})
+			if err != nil {
+				return fmt.Errorf("failed to marshal template scaffold: %w", err)
+			}
+
+			if err := utils.CreateFileIfNotExists(newFilePath, scaffold); err != nil {
+				return fmt.Errorf("failed to create template file: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Created template: %s\n", newFilePath)
 
 			return nil
 		},
 	}
 
-	createCMD.Flags().StringP("name", "n", "", "name of the template to create")
-	createCMD.Flags().StringP("resource", "r", "", "resource type of custom column templates to create")
+	createCMD.Flags().StringP("name", "n", "", "Name for the new template (without extension)")
+	createCMD.Flags().StringP("resource", "r", "", "Resource type to create the template for (e.g. pod, deployment)")
 	createCMD.MarkFlagRequired("resource")
 	createCMD.MarkFlagRequired("name")
 

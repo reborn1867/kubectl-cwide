@@ -17,6 +17,7 @@ import (
 
 	"github.com/jedib0t/go-pretty/v6/table"
 	"github.com/liggitt/tabwriter"
+	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -28,6 +29,7 @@ import (
 	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
 
 	"github.com/kubectl-cwide/pkg/common"
+	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/parser"
 	"github.com/kubectl-cwide/pkg/utils"
 )
@@ -142,6 +144,62 @@ func NewCustomColumnsPrinterFromTemplate(templateReader io.Reader, decoder runti
 		}
 		columns[ix] = Column{
 			Header:    headers[ix],
+			FieldSpec: spec,
+		}
+	}
+
+	generator := utils.NewTableGenerator().With(printersinternal.AddHandlers)
+
+	return &CustomColumnsPrinter{Columns: columns, Decoder: decoder, NoHeaders: false, Config: restConfig, localTemplate: localTemplate, DefaultTableGenerator: generator, Headers: headers}, nil
+}
+
+// NewCustomColumnsPrinterFromYAML creates a custom columns printer from a YAML template.
+func NewCustomColumnsPrinterFromYAML(data []byte, decoder runtime.Decoder, restConfig *rest.Config) (*CustomColumnsPrinter, error) {
+	var tmpl models.YAMLTemplate
+	if err := yaml.Unmarshal(data, &tmpl); err != nil {
+		return nil, fmt.Errorf("failed to parse YAML template: %v", err)
+	}
+
+	if len(tmpl.Columns) == 0 {
+		return nil, fmt.Errorf("YAML template must define at least one column")
+	}
+
+	localTemplate := template.New("local")
+	localTemplate.Funcs(parser.GetFuncMap(restConfig))
+
+	if tmpl.Helpers != "" {
+		if _, err := localTemplate.Parse(tmpl.Helpers); err != nil {
+			return nil, fmt.Errorf("failed to parse helpers template: %v", err)
+		}
+	}
+
+	columns := make([]Column, len(tmpl.Columns))
+	headers := make([]string, len(tmpl.Columns))
+	for ix, col := range tmpl.Columns {
+		if col.Header == "" {
+			return nil, fmt.Errorf("column %d is missing a header", ix)
+		}
+		headers[ix] = col.Header
+
+		var spec string
+		if col.Template != "" {
+			spec = col.Template
+		} else if col.FieldSpec != "" {
+			if col.FieldSpec == common.DefaultPrinterField {
+				spec = fmt.Sprintf("{.%s}", common.DefaultPrinterField)
+			} else {
+				var err error
+				spec, err = RelaxedJSONPathExpression(col.FieldSpec)
+				if err != nil {
+					return nil, fmt.Errorf("column %q: %v", col.Header, err)
+				}
+			}
+		} else {
+			return nil, fmt.Errorf("column %q must have either fieldSpec or template", col.Header)
+		}
+
+		columns[ix] = Column{
+			Header:    col.Header,
 			FieldSpec: spec,
 		}
 	}
