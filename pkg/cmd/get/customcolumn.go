@@ -182,8 +182,10 @@ func NewCustomColumnsPrinterFromYAML(data []byte, decoder runtime.Decoder, restC
 		headers[ix] = col.Header
 
 		var spec string
+		isTemplate := false
 		if col.Template != "" {
 			spec = col.Template
+			isTemplate = true
 		} else if col.FieldSpec != "" {
 			if col.FieldSpec == common.DefaultPrinterField {
 				spec = fmt.Sprintf("{.%s}", common.DefaultPrinterField)
@@ -199,8 +201,9 @@ func NewCustomColumnsPrinterFromYAML(data []byte, decoder runtime.Decoder, restC
 		}
 
 		columns[ix] = Column{
-			Header:    col.Header,
-			FieldSpec: spec,
+			Header:     col.Header,
+			FieldSpec:  spec,
+			IsTemplate: isTemplate,
 		}
 	}
 
@@ -216,6 +219,9 @@ type Column struct {
 	// The pointer to the field in the object to print in JSONPath form
 	// e.g. {.ObjectMeta.Name}, see pkg/util/jsonpath for more details.
 	FieldSpec string
+	// IsTemplate marks this column's FieldSpec as a Go template expression,
+	// bypassing the IsTemplate() heuristic check.
+	IsTemplate bool
 }
 
 // CustomColumnPrinter is a printer that knows how to print arbitrary columns
@@ -280,7 +286,7 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		p.IsAGE = col.Header == "AGE"
 		p.IsDefaultPrinterField = col.FieldSpec == fmt.Sprintf("{.%s}", common.DefaultPrinterField)
 
-		if parser.IsTemplate(col.FieldSpec) {
+		if col.IsTemplate || parser.IsTemplate(col.FieldSpec) {
 			var tParser *template.Template
 			if s.localTemplate != nil {
 				tParser = s.localTemplate.New(fmt.Sprintf("column%d", ix)).Option("missingkey=zero")

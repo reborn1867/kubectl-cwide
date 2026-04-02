@@ -12,8 +12,10 @@ Managing Kubernetes resources often requires printing extra columns for specific
 - **YAML Template Support**: Define templates in a structured YAML format for better readability and maintainability alongside the classic `.tpl` format.
 - **Automatic Template Generation**: Automatically generate custom column templates for Kubernetes resources, saving time and effort.
 - **Customizable Output**: Define and persist custom column formats for specific resource types with ease.
-- **Editable Templates**: Modify and extend templates as needed to suit your workflow.
-- **Team Collaboration**: Share custom column templates with team members for consistent and standardized output.
+- **Editable Templates**: Modify and extend templates as needed to suit your workflow. Use `template edit` to open templates directly in your preferred editor.
+- **Team Collaboration**: Share custom column templates with team members via Kubernetes ConfigMaps using `configmap push` and `configmap sync`.
+- **Community Marketplace**: Browse and install community-shared templates from GitHub with `marketplace list`, `search`, and `install`.
+- **Built-in Template Functions**: Use specialized functions like `probeCheck` to perform live health checks on pod probe endpoints directly in your templates.
 
 ## Installation
 As a [krew](https://github.com/kubernetes-sigs/krew) plugin, `kubectl-ciwe` can be installed with a simple command as following once it's officially accepted.
@@ -231,6 +233,164 @@ fluentd-wx98t                                   1/1     Running   0          37m
 fluentd-x55zk                                   1/1     Running   0          39m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-k7s7x   fluent/fluentd:v1.16
 grafana-7475f448db-49zn9                        2/2     Running   0          4d23h   <none>   shoot--di-demo--di-dmo-gcp-reg-default-z3-6ffc9-99nkz   grafana/grafana:11.5.4
 ```
+
+### Editing Templates
+
+Use `template edit` to open a template file directly in your preferred editor:
+
+```sh
+# Edit the default template for pods
+kubectl cwide template edit -r pod
+
+# Edit a specific named template
+kubectl cwide template edit -r deployment -t minimal
+
+# Use a custom editor
+EDITOR=nano kubectl cwide template edit -r pod
+```
+
+The editor is determined by the `EDITOR` environment variable (defaults to `vi`). The command automatically resolves `.yaml` templates first, falling back to `.tpl`.
+
+### Configuration
+
+kubectl-cwide stores its configuration at `~/.kubectl-cwide/config.yaml`. Use the `config` command to open it in an editor:
+
+```sh
+kubectl cwide config
+```
+
+The config file supports the following fields:
+
+```yaml
+# Root directory for template files
+templatePath: /tmp/cwide
+
+# Priority order for resolving templates when using ConfigMap sync.
+# "local" = local files take priority, "configmap" = ConfigMap takes priority.
+templateSources:
+  - local
+  - configmap
+```
+
+### ConfigMap Sync
+
+Share templates across a team by storing them in a Kubernetes ConfigMap. The `configmap` command provides two subcommands: `push` and `sync`.
+
+Each template is stored as a ConfigMap data key in the format `<resource-dir>/<template-name>` (e.g. `pod--v1/debug`).
+
+#### Push local templates to a ConfigMap
+
+```sh
+# Push all local templates
+kubectl cwide configmap push
+
+# Push only pod templates
+kubectl cwide configmap push -r pod
+
+# Push to a custom ConfigMap name and namespace
+kubectl cwide configmap push --name my-templates --cm-namespace default
+```
+
+If the ConfigMap does not exist, it is created automatically. Otherwise, existing keys are updated and new keys are added.
+
+#### Sync templates from a ConfigMap to local
+
+```sh
+# Pull templates from the default ConfigMap (cwide-templates in kube-system)
+kubectl cwide configmap sync
+
+# Sync from a specific ConfigMap
+kubectl cwide configmap sync --name my-templates --cm-namespace default
+
+# Force overwrite all local files regardless of priority
+kubectl cwide configmap sync --force
+```
+
+Whether existing local files are overwritten depends on the `templateSources` order in the config file:
+- `["local", "configmap"]` (default) — local files take priority, existing files are skipped
+- `["configmap", "local"]` — ConfigMap takes priority, existing files are overwritten
+
+Use `--force` to always overwrite regardless of priority.
+
+### Marketplace
+
+Browse and install community-shared templates from a GitHub repository.
+
+The default repository is [`reborn1867/kubectl-cwide-templates`](https://github.com/reborn1867/kubectl-cwide-templates). Use `--repo` on any subcommand to point to a different repository.
+
+#### List available resource types
+
+```sh
+kubectl cwide marketplace list
+
+# Example output:
+# deployment-apps-v1
+# pod--v1
+# service--v1
+```
+
+#### Search for templates by resource type
+
+```sh
+kubectl cwide marketplace search -r pod
+
+# Example output:
+# pod--v1/debug
+# pod--v1/networking
+```
+
+#### Install a template
+
+```sh
+# Install the "debug" template for pods
+kubectl cwide marketplace install -r pod -t debug
+
+# Overwrite an existing local template
+kubectl cwide marketplace install -r pod -t debug --force
+
+# Install from a custom repository
+kubectl cwide marketplace install -r pod -t debug --repo myorg/my-templates
+```
+
+The template is downloaded and saved into the matching resource directory under your local template path.
+
+### Template Functions
+
+In addition to standard Go template and Helm-style functions, kubectl-cwide provides built-in template functions for common Kubernetes operations.
+
+#### `probeCheck` — Live probe health check
+
+The `probeCheck` function pings a pod's probe endpoint through the Kubernetes API server proxy and returns the result. It supports `readiness`, `liveness`, and `startup` probes with `httpGet` and `tcpSocket` handlers.
+
+Usage in a YAML template:
+
+```yaml
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: READINESS
+    template: '{{ probeCheck . "readiness" }}'
+  - header: LIVENESS
+    template: '{{ probeCheck . "liveness" }}'
+```
+
+Usage in a `.tpl` template:
+
+```
+NAME    READINESS    LIVENESS
+.metadata.name {{ probeCheck . "readiness" }} {{ probeCheck . "liveness" }}
+```
+
+Possible output values:
+| Output | Meaning |
+|---|---|
+| `OK (200)` | HTTP probe returned a success status code |
+| `OK` | TCP probe port is reachable |
+| `FAIL (502)` | HTTP probe returned an error status code |
+| `FAIL (...)` | Probe request failed (with truncated error) |
+| `N/A` | No probe configured for the container |
+| `N/A (exec)` | Probe uses exec handler (cannot be checked remotely) |
+| `N/A (grpc)` | Probe uses gRPC handler (not supported) |
 
 ## Reference 
 - **cli-runtime**: A set of packages to share code with `kubectl` for printing output or sharing command-line options.

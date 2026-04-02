@@ -6,7 +6,8 @@ import (
 
 // Config is the struct for the config.yaml file
 type Config struct {
-	TemplatePath string `json:"templatePath"`
+	TemplatePath    string   `json:"templatePath" yaml:"templatePath"`
+	TemplateSources []string `json:"templateSources,omitempty" yaml:"templateSources,omitempty"`
 }
 
 type CRDProperty struct {
