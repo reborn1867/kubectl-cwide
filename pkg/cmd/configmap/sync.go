@@ -18,12 +18,14 @@ func NewCmdSync() *cobra.Command {
 	var force bool
 
 	syncCMD := &cobra.Command{
-		Use:   "sync",
-		Short: "Pull templates from a ConfigMap into the local directory",
+		Use:        "sync",
+		Aliases:    []string{"pull"},
+		SuggestFor: []string{"download", "fetch"},
+		Short:      "Pull templates from a ConfigMap into the local directory",
 		Long: `Sync templates stored in a Kubernetes ConfigMap to the local template directory.
 
-Each ConfigMap data key should be in the format "<resource-dir>/<template-name>"
-(e.g. "pod--v1/debug"). The value is the YAML template content.
+Each ConfigMap data key should be in the format "<resource-dir>..<template-name>"
+(e.g. "pod--v1..debug"). The value is the YAML template content.
 
 Whether existing local files are overwritten depends on the 'templateSources'
 order in the config file:
@@ -74,9 +76,9 @@ Use --force to always overwrite regardless of priority.`,
 			synced := 0
 			skipped := 0
 			for key, value := range cm.Data {
-				parts := strings.SplitN(key, "/", 2)
+				parts := strings.SplitN(key, "..", 2)
 				if len(parts) != 2 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Skipping invalid key %q (expected <resource-dir>/<template-name>)\n", key)
+					fmt.Fprintf(cmd.ErrOrStderr(), "Skipping invalid key %q (expected <resource-dir>..<template-name>)\n", key)
 					continue
 				}
 

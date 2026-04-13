@@ -91,7 +91,7 @@ func resolveTemplatePrinter(rootPath, crdTemplateDir, templateName string, decod
 
 // Complete resolves flags and sets up the factory.
 func (o *GetOptions) Complete(cmd *cobra.Command, args []string) error {
-	o.args = args
+	o.args = utils.ResolveAlias(args)
 
 	rootPath, err := utils.ResolveTemplatePath(cmd)
 	if err != nil {
@@ -329,8 +329,10 @@ func NewCmdGet(streams genericiooptions.IOStreams) *cobra.Command {
 	o := NewGetOptions(streams)
 
 	cmd := &cobra.Command{
-		Use:   "get TYPE [NAME ...] [flags]",
-		Short: "Display resources in custom wide output format",
+		Use:        "get TYPE [NAME ...] [flags]",
+		Aliases:    []string{"g"},
+		SuggestFor: []string{"list", "show", "fetch", "describe"},
+		Short:      "Display resources in custom wide output format",
 		Long: `Display one or more resources using custom column templates.
 
 Templates are resolved from the template root directory (set via --template-path or

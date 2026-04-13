@@ -12,8 +12,10 @@ import (
 
 func NewCmdConfig() *cobra.Command {
 	return &cobra.Command{
-		Use:   "config",
-		Short: "Open the config file in an editor",
+		Use:        "config",
+		Aliases:    []string{"cfg"},
+		SuggestFor: []string{"configure", "conf", "settings"},
+		Short:      "Open the config file in an editor",
 		Long: `Open the kubectl-cwide configuration file (~/.kubectl-cwide/config.yaml)
 in your preferred editor. The editor is determined by the EDITOR environment
 variable, falling back to vi.`,

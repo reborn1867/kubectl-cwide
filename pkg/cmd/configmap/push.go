@@ -20,12 +20,13 @@ func NewCmdPush() *cobra.Command {
 	var resource string
 
 	pushCMD := &cobra.Command{
-		Use:   "push",
-		Short: "Push local templates into a Kubernetes ConfigMap",
+		Use:        "push",
+		SuggestFor: []string{"upload", "publish"},
+		Short:      "Push local templates into a Kubernetes ConfigMap",
 		Long: `Upload local template files into a Kubernetes ConfigMap.
 
 Each template file is stored as a data key in the format
-"<resource-dir>/<template-name>" (e.g. "pod--v1/debug"). If the ConfigMap
+"<resource-dir>..<template-name>" (e.g. "pod--v1..debug"). If the ConfigMap
 does not exist, it is created.
 
 By default all templates under the template root are pushed. Use -r to push
@@ -67,7 +68,7 @@ only templates for a specific resource type.`,
 				}
 				dir := filepath.Dir(rel)
 				name := strings.TrimSuffix(filepath.Base(rel), ".yaml")
-				key := dir + "/" + name
+				key := dir + ".." + name
 
 				content, err := os.ReadFile(match)
 				if err != nil {

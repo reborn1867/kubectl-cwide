@@ -167,10 +167,47 @@ func NewCustomColumnsPrinterFromYAML(data []byte, decoder runtime.Decoder, restC
 	localTemplate := template.New("local")
 	localTemplate.Funcs(parser.GetFuncMap(restConfig))
 
+	// Register user-defined custom funcs (two-pass approach).
+	// Pass 1: register stub functions so the parser recognizes their names.
+	if len(tmpl.Funcs) > 0 {
+		stubs := make(template.FuncMap, len(tmpl.Funcs))
+		for name := range tmpl.Funcs {
+			stubs[name] = func(args ...interface{}) (string, error) { return "", nil }
+		}
+		localTemplate.Funcs(stubs)
+	}
+
 	if tmpl.Helpers != "" {
 		if _, err := localTemplate.Parse(tmpl.Helpers); err != nil {
 			return nil, fmt.Errorf("failed to parse helpers template: %v", err)
 		}
+	}
+
+	// Parse each custom func body as a named sub-template.
+	for name, body := range tmpl.Funcs {
+		if _, err := localTemplate.New("__func_" + name).Parse(body); err != nil {
+			return nil, fmt.Errorf("custom func %q: %v", name, err)
+		}
+	}
+
+	// Pass 2: re-register with real implementations that execute the parsed templates.
+	for name := range tmpl.Funcs {
+		n := name
+		localTemplate.Funcs(template.FuncMap{
+			n: func(args ...interface{}) (string, error) {
+				var dot interface{}
+				if len(args) == 1 {
+					dot = args[0]
+				} else {
+					dot = args
+				}
+				var buf strings.Builder
+				if err := localTemplate.ExecuteTemplate(&buf, "__func_"+n, dot); err != nil {
+					return "", err
+				}
+				return buf.String(), nil
+			},
+		})
 	}
 
 	columns := make([]Column, len(tmpl.Columns))
@@ -292,9 +329,8 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 				tParser = s.localTemplate.New(fmt.Sprintf("column%d", ix)).Option("missingkey=zero")
 			} else {
 				tParser = template.New(fmt.Sprintf("column%d", ix)).Option("missingkey=zero")
+				tParser.Funcs(parser.GetFuncMap(s.Config))
 			}
-
-			tParser.Funcs(parser.GetFuncMap(s.Config))
 
 			tParser, err := tParser.Parse(col.FieldSpec)
 			if err != nil {

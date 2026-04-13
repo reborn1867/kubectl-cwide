@@ -12,8 +12,10 @@ import (
 
 func NewCmdCreate() *cobra.Command {
 	createCMD := &cobra.Command{
-		Use:   "create",
-		Short: "Create a new column template",
+		Use:        "create",
+		Aliases:    []string{"new"},
+		SuggestFor: []string{"add"},
+		Short:      "Create a new column template",
 		Long: `Scaffold a new YAML column template for the specified resource type.
 
 The template is created with a single NAME column as a starting point.

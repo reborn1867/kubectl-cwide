@@ -11,8 +11,10 @@ import (
 
 func NewCmdTemplateList() *cobra.Command {
 	templateCMD := &cobra.Command{
-		Use:   "list",
-		Short: "List available templates for a resource type",
+		Use:        "list",
+		Aliases:    []string{"ls"},
+		SuggestFor: []string{"show"},
+		Short:      "List available templates for a resource type",
 		Long: `List all column templates available for the specified resource type.
 
 Templates are discovered from both .yaml and .tpl files in the template

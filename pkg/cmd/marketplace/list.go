@@ -8,8 +8,10 @@ import (
 
 func NewCmdList() *cobra.Command {
 	return &cobra.Command{
-		Use:   "list",
-		Short: "List available resource types in the marketplace",
+		Use:        "list",
+		Aliases:    []string{"ls"},
+		SuggestFor: []string{"show"},
+		Short:      "List available resource types in the marketplace",
 		Long: `List all resource types that have community templates available.
 
 Each entry corresponds to a resource directory (e.g. pod--v1, deployment-apps-v1)

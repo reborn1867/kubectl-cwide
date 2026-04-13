@@ -2,8 +2,9 @@ package models
 
 // YAMLTemplate represents a YAML-based template file for custom column output.
 type YAMLTemplate struct {
-	Columns []YAMLColumn `yaml:"columns"`
-	Helpers string       `yaml:"helpers,omitempty"`
+	Columns []YAMLColumn      `yaml:"columns"`
+	Helpers string             `yaml:"helpers,omitempty"`
+	Funcs   map[string]string  `yaml:"funcs,omitempty"`
 }
 
 // YAMLColumn defines a single column in a YAML template.

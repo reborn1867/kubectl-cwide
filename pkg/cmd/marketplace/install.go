@@ -14,8 +14,10 @@ func NewCmdInstall() *cobra.Command {
 	var force bool
 
 	installCMD := &cobra.Command{
-		Use:   "install",
-		Short: "Install a template from the marketplace",
+		Use:        "install",
+		Aliases:    []string{"add"},
+		SuggestFor: []string{"download"},
+		Short:      "Install a template from the marketplace",
 		Long: `Download a community template and save it to the local template directory.
 
 The template is fetched from the remote GitHub repository and saved under the

@@ -25,8 +25,10 @@ import (
 
 func NewCmdInit() *cobra.Command {
 	initCMD := &cobra.Command{
-		Use:   "init",
-		Short: "Initialize column templates for all cluster resources",
+		Use:        "init",
+		Aliases:    []string{"i"},
+		SuggestFor: []string{"setup", "initialize"},
+		Short:      "Initialize column templates for all cluster resources",
 		Long: `Generate column templates for every CRD and built-in resource discovered in
 the target cluster. Templates are written as YAML files under the directory
 specified by --template-path. A config file is saved at ~/.kubectl-cwide/config.yaml

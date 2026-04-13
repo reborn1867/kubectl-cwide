@@ -10,8 +10,10 @@ import (
 
 func NewCmdSearch() *cobra.Command {
 	searchCMD := &cobra.Command{
-		Use:   "search",
-		Short: "Search for templates by resource type",
+		Use:        "search",
+		Aliases:    []string{"s"},
+		SuggestFor: []string{"find", "query"},
+		Short:      "Search for templates by resource type",
 		Long: `Search the marketplace for templates matching a specific resource type.
 
 The resource flag is matched as a prefix against directory names in the remote

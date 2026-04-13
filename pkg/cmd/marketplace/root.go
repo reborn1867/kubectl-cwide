@@ -4,8 +4,10 @@ import "github.com/spf13/cobra"
 
 func NewCmdMarketplace() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:   "marketplace",
-		Short: "Browse and install community templates",
+		Use:        "marketplace",
+		Aliases:    []string{"mp"},
+		SuggestFor: []string{"market", "store", "hub"},
+		Short:      "Browse and install community templates",
 		Long: `Discover and install column templates shared by the community.
 
 Templates are fetched from a GitHub repository (default: reborn1867/kubectl-cwide-templates).

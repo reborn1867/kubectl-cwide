@@ -12,8 +12,10 @@ import (
 
 func NewCmdEdit() *cobra.Command {
 	editCMD := &cobra.Command{
-		Use:   "edit",
-		Short: "Open a template file in an editor",
+		Use:        "edit",
+		Aliases:    []string{"e"},
+		SuggestFor: []string{"modify", "update"},
+		Short:      "Open a template file in an editor",
 		Long: `Open the column template for the specified resource type in your preferred
 editor. The editor is determined by the EDITOR environment variable, falling
 back to vi.

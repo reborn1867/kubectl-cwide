@@ -16,6 +16,9 @@ Managing Kubernetes resources often requires printing extra columns for specific
 - **Team Collaboration**: Share custom column templates with team members via Kubernetes ConfigMaps using `configmap push` and `configmap sync`.
 - **Community Marketplace**: Browse and install community-shared templates from GitHub with `marketplace list`, `search`, and `install`.
 - **Built-in Template Functions**: Use specialized functions like `probeCheck` to perform live health checks on pod probe endpoints directly in your templates.
+- **Resource Tree View**: Visualize relationships between Kubernetes resources (owner references, label selectors, field references) with the `tree` command.
+- **API Resource Discovery**: List all available API resources in the cluster with `list all`, filtered by namespaced or cluster-scoped.
+- **Custom Resource Aliases**: Define short aliases for long resource type names (e.g. `vw` for `validatingwebhookconfigurations`) with automatic resolution in `get` and `tree` commands.
 
 ## Installation
 As a [krew](https://github.com/kubernetes-sigs/krew) plugin, `kubectl-ciwe` can be installed with a simple command as following once it's officially accepted.
@@ -270,6 +273,12 @@ templatePath: /tmp/cwide
 templateSources:
   - local
   - configmap
+
+# Custom short aliases for resource type names.
+# Used automatically in 'get' and 'tree' commands.
+aliases:
+  pd: pods
+  vw: validatingwebhookconfigurations
 ```
 
 ### ConfigMap Sync
@@ -353,6 +362,125 @@ kubectl cwide marketplace install -r pod -t debug --repo myorg/my-templates
 ```
 
 The template is downloaded and saved into the matching resource directory under your local template path.
+
+### Resource Tree
+
+Visualize the relationship hierarchy between Kubernetes resources. The `tree` command starts from a root resource and discovers related resources via owner references, label selectors, or field references.
+
+#### Inline relationships
+
+```sh
+# Deployment → ReplicaSets → Pods (via ownerReference)
+kubectl cwide tree deployment/nginx \
+  --related=replicasets:ownerRef \
+  --related=pods:ownerRef:replicasets
+```
+
+#### Label selector relationships
+
+```sh
+# Service → Pods (via label selector)
+kubectl cwide tree service/my-svc --related=pods:labelSelector
+```
+
+#### YAML rules file
+
+Define relationships in a YAML file for reuse:
+
+```yaml
+# deploy-stack.yaml
+relations:
+  - resource: replicasets
+    bind:
+      type: ownerRef
+  - resource: pods
+    bind:
+      type: ownerRef
+      parent: replicasets
+  - resource: services
+    bind:
+      type: labelSelector
+```
+
+```sh
+kubectl cwide tree deployment/nginx -f deploy-stack.yaml
+```
+
+Binding types:
+| Type | Description |
+|---|---|
+| `ownerRef` | Child resources whose ownerReferences point to the parent |
+| `labelSelector` | Resources matched by the parent's label selector (bidirectional) |
+| `fieldRef` | Resources referenced by name in a parent's field (via JSONPath) |
+
+### List API Resources
+
+Discover all API resource types available in the cluster, similar to `kubectl api-resources`.
+
+```sh
+# List namespaced resources (default)
+kubectl cwide list all
+
+# List cluster-scoped (non-namespaced) resources
+kubectl cwide list all -A
+
+# Without headers
+kubectl cwide list all --no-headers
+```
+
+Example output:
+```
+NAME           SHORTNAMES   APIVERSION   NAMESPACED   KIND
+configmaps     cm           v1           true         ConfigMap
+deployments    deploy       apps/v1      true         Deployment
+pods           po           v1           true         Pod
+services       svc          v1           true         Service
+```
+
+### Resource Aliases
+
+Define custom short aliases for Kubernetes resource type names. Aliases are persisted in `~/.kubectl-cwide/config.yaml` and automatically resolved when used in `get` and `tree` commands.
+
+#### Set an alias
+
+```sh
+kubectl cwide alias set pd pods
+kubectl cwide alias set vw validatingwebhookconfigurations
+```
+
+When setting an alias, cwide checks for conflicts against:
+- Existing aliases in your config (warns if overwriting)
+- Built-in Kubernetes resource short names (warns if the alias shadows a built-in name)
+
+#### List aliases
+
+```sh
+kubectl cwide alias list
+
+# Output:
+# ALIAS   RESOURCE
+# pd      pods
+# vw      validatingwebhookconfigurations
+```
+
+#### Delete an alias
+
+```sh
+kubectl cwide alias delete pd
+```
+
+#### Using aliases
+
+Once set, aliases work transparently in `get` and `tree` commands:
+
+```sh
+# These are equivalent:
+kubectl cwide get pods
+kubectl cwide get pd
+
+# Also works with tree:
+kubectl cwide tree pd/my-pod --related=replicasets:ownerRef
+```
 
 ### Template Functions
 

@@ -279,3 +279,60 @@ func ResolveTemplatePath(cmd *cobra.Command) (string, error) {
 	}
 	return GetTemplatePathFromConfig()
 }
+
+// SaveConfig writes the config struct back to ~/.kubectl-cwide/config.yaml.
+func SaveConfig(config *models.Config) error {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return fmt.Errorf("failed to get home directory: %w", err)
+	}
+
+	data, err := yaml.Marshal(config)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	configPath := filepath.Join(homeDir, common.ConfigPath)
+	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	return os.WriteFile(configPath, data, 0644)
+}
+
+// ResolveAlias replaces the first argument (resource type) with its alias target
+// if a matching alias exists in the config. Returns the args unchanged if no alias
+// matches or if the config cannot be loaded.
+func ResolveAlias(args []string) []string {
+	if len(args) == 0 {
+		return args
+	}
+
+	config, err := LoadConfig()
+	if err != nil || len(config.Aliases) == 0 {
+		return args
+	}
+
+	if target, ok := config.Aliases[args[0]]; ok {
+		result := make([]string, len(args))
+		copy(result, args)
+		result[0] = target
+		return result
+	}
+
+	return args
+}
+
+// ResolveAliasString resolves a single resource name through the alias map.
+// Returns the original name if no alias matches or config cannot be loaded.
+func ResolveAliasString(name string) string {
+	config, err := LoadConfig()
+	if err != nil || len(config.Aliases) == 0 {
+		return name
+	}
+
+	if target, ok := config.Aliases[name]; ok {
+		return target
+	}
+	return name
+}
