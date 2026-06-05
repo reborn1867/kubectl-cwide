@@ -31,6 +31,7 @@ import (
 )
 
 type lookupFunc = func(apiversion string, resource string, namespace string, name string) (map[string]interface{}, error)
+type lookupByLabelFunc = func(apiversion string, resource string, namespace string, labelSelector string) (map[string]interface{}, error)
 
 // NewLookupFunction returns a function for looking up objects in the cluster.
 //
@@ -52,6 +53,36 @@ type clientProviderFromConfig struct {
 
 func (c clientProviderFromConfig) GetClientFor(apiVersion, kind string) (dynamic.NamespaceableResourceInterface, bool, error) {
 	return getDynamicClientOnKind(apiVersion, kind, c.config)
+}
+
+// NewLookupByLabelFunction returns a function for listing objects by label selector.
+func NewLookupByLabelFunction(config *rest.Config) lookupByLabelFunc {
+	return newLookupByLabelFunction(clientProviderFromConfig{config: config})
+}
+
+func newLookupByLabelFunction(clientProvider ClientProvider) lookupByLabelFunc {
+	return func(apiversion string, kind string, namespace string, labelSelector string) (map[string]interface{}, error) {
+		var client dynamic.ResourceInterface
+		c, namespaced, err := clientProvider.GetClientFor(apiversion, kind)
+		if err != nil {
+			return map[string]interface{}{}, err
+		}
+		if namespaced && namespace != "" {
+			client = c.Namespace(namespace)
+		} else {
+			client = c
+		}
+		obj, err := client.List(context.Background(), metav1.ListOptions{
+			LabelSelector: labelSelector,
+		})
+		if err != nil {
+			if apierrors.IsNotFound(err) {
+				return map[string]interface{}{}, nil
+			}
+			return map[string]interface{}{}, err
+		}
+		return obj.UnstructuredContent(), nil
+	}
 }
 
 func newLookupFunction(clientProvider ClientProvider) lookupFunc {

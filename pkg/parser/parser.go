@@ -110,6 +110,7 @@ func GetFuncMap(cfg *rest.Config) template.FuncMap {
 	}
 
 	m["lookup"] = funcs.NewLookupFunction(cfg)
+	m["lookupByLabel"] = funcs.NewLookupByLabelFunction(cfg)
 	m["probeCheck"] = funcs.NewProbeCheckFunction(cfg)
 
 	return m
