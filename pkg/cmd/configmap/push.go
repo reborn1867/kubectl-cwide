@@ -8,6 +8,7 @@ import (
 
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -15,8 +16,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+// aliasesConfigMapKey is the data-map key used to store a YAML-marshalled
+// alias map (name → target) so aliases can be shared across a team via the
+// same ConfigMap that carries templates.
+const aliasesConfigMapKey = "__aliases__"
+
 func NewCmdPush() *cobra.Command {
 	var resource string
+	var includeAliases bool
 
 	pushCMD := &cobra.Command{
 		Use:        "push",
@@ -77,6 +84,15 @@ only templates for a specific resource type.`,
 				data[key] = string(content)
 			}
 
+			if includeAliases {
+				cfg, err := utils.LoadConfig()
+				if err == nil && len(cfg.Aliases) > 0 {
+					if raw, err := yaml.Marshal(cfg.Aliases); err == nil {
+						data[aliasesConfigMapKey] = string(raw)
+					}
+				}
+			}
+
 			if len(data) == 0 {
 				if resource != "" {
 					return fmt.Errorf("no templates found for resource type %q", resource)
@@ -132,6 +148,7 @@ only templates for a specific resource type.`,
 	}
 
 	pushCMD.Flags().StringVarP(&resource, "resource", "r", "", "Only push templates for this resource type (e.g. pod, deployment)")
+	pushCMD.Flags().BoolVar(&includeAliases, "with-aliases", false, "Also push resource aliases from local config under the reserved key "+aliasesConfigMapKey)
 
 	return pushCMD
 }

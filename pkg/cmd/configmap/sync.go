@@ -8,6 +8,7 @@ import (
 
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -75,7 +76,17 @@ Use --force to always overwrite regardless of priority.`,
 
 			synced := 0
 			skipped := 0
+			aliasesSynced := 0
 			for key, value := range cm.Data {
+				if key == aliasesConfigMapKey {
+					n, err := mergeRemoteAliases([]byte(value), force)
+					if err != nil {
+						fmt.Fprintf(cmd.ErrOrStderr(), "Skipping %s: %v\n", key, err)
+						continue
+					}
+					aliasesSynced = n
+					continue
+				}
 				parts := strings.SplitN(key, "..", 2)
 				if len(parts) != 2 {
 					fmt.Fprintf(cmd.ErrOrStderr(), "Skipping invalid key %q (expected <resource-dir>..<template-name>)\n", key)
@@ -103,6 +114,9 @@ Use --force to always overwrite regardless of priority.`,
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Synced %d template(s), skipped %d.\n", synced, skipped)
+			if aliasesSynced > 0 {
+				fmt.Fprintf(cmd.OutOrStdout(), "Merged %d alias(es) from ConfigMap.\n", aliasesSynced)
+			}
 			return nil
 		},
 	}
@@ -129,6 +143,42 @@ func shouldOverwrite(sources []string, localExists bool, force bool) bool {
 		}
 	}
 	return false
+}
+
+// mergeRemoteAliases merges a YAML alias map (name → target) from the
+// ConfigMap into the local config. Existing local aliases are preserved
+// unless `force` is true, in which case remote wins.
+// Returns the number of aliases added or updated.
+func mergeRemoteAliases(raw []byte, force bool) (int, error) {
+	remote := map[string]string{}
+	if err := yaml.Unmarshal(raw, &remote); err != nil {
+		return 0, fmt.Errorf("parse aliases yaml: %w", err)
+	}
+	if len(remote) == 0 {
+		return 0, nil
+	}
+	cfg, err := utils.LoadConfig()
+	if err != nil {
+		return 0, fmt.Errorf("load config: %w", err)
+	}
+	if cfg.Aliases == nil {
+		cfg.Aliases = map[string]string{}
+	}
+	n := 0
+	for name, target := range remote {
+		if _, exists := cfg.Aliases[name]; exists && !force {
+			continue
+		}
+		cfg.Aliases[name] = target
+		n++
+	}
+	if n == 0 {
+		return 0, nil
+	}
+	if err := utils.SaveConfig(cfg); err != nil {
+		return 0, fmt.Errorf("save config: %w", err)
+	}
+	return n, nil
 }
 
 // loadTemplateSources reads the templateSources from the config file.
