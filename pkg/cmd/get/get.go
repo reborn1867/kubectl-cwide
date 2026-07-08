@@ -356,6 +356,8 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 		RunE: o.Run,
 	}
 
+	cmd.AddCommand(NewCmdGetAllResources(streams))
+
 	cmd.Flags().BoolVar(&o.NoHeaders, "no-headers", o.NoHeaders, "When using the default or custom-column output format, don't print headers (default print headers).")
 	cmd.Flags().StringVar(&o.Raw, "raw", o.Raw, "Raw URI to request from the server. Uses the transport specified by the kubeconfig file.")
 	cmd.Flags().BoolVarP(&o.Watch, "watch", "w", o.Watch, "After listing/getting the requested object, watch for changes.")
