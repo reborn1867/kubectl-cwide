@@ -3,6 +3,7 @@ package get
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 
@@ -55,6 +56,7 @@ type GetOptions struct {
 	TemplateRootPath  string
 	EnableCustomTable bool
 	Columns           []string
+	Output            string
 
 	factory cmdutil.Factory
 	args    []string
@@ -177,6 +179,10 @@ func (o *GetOptions) list() error {
 		return err
 	}
 
+	if o.Output != "" {
+		return o.emitStructured(printer, infos)
+	}
+
 	w := printers.GetNewTabWriter(os.Stdout)
 	for _, info := range infos {
 		if err := printer.PrintObj(info.Object, w); err != nil {
@@ -191,6 +197,17 @@ func (o *GetOptions) list() error {
 	}
 
 	return nil
+}
+
+func (o *GetOptions) emitStructured(printer *CustomColumnsPrinter, infos []*resource.Info) error {
+	var rows [][]string
+	printer.RowSink = func(cols []string) { rows = append(rows, cols) }
+	for _, info := range infos {
+		if err := printer.PrintObj(info.Object, io.Discard); err != nil {
+			return fmt.Errorf("failed to render row: %w", err)
+		}
+	}
+	return renderRows(o.Out, o.Output, printer.Headers, rows)
 }
 
 func (o *GetOptions) watch() error {
@@ -378,6 +395,7 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 
 	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Name of the column template to use (without extension).")
 	cmd.Flags().StringSliceVarP(&o.Columns, "columns", "c", nil, "Comma-separated list of column headers to display (subset of the template's columns, case-insensitive).")
+	cmd.Flags().StringVarP(&o.Output, "output", "o", "", "Output format. One of: json, yaml, csv. If empty, prints the standard table.")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
 	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output with borders.")

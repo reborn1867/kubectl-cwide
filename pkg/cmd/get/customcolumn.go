@@ -275,6 +275,9 @@ type CustomColumnsPrinter struct {
 	*utils.DefaultTableGenerator
 	Headers     []string // - Headers is used to store the headers for the custom columns
 	CustomTable table.Writer
+	// RowSink, when non-nil, captures each row's column values instead of
+	// writing them to the tabwriter. Used by structured output formats.
+	RowSink func(cols []string)
 }
 
 // SelectColumns filters the printer's Columns/Headers to the named subset,
@@ -339,7 +342,7 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		defer w.Flush()
 	}
 
-	if s.CustomTable == nil {
+	if s.CustomTable == nil && s.RowSink == nil {
 		t := reflect.TypeOf(obj)
 		if !s.NoHeaders && t != s.lastType {
 			headers := make([]string, len(s.Columns))
@@ -453,7 +456,9 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		multiLinesColumns = append(multiLinesColumns, lines)
 	}
 
-	if s.CustomTable != nil {
+	if s.RowSink != nil {
+		s.RowSink(append([]string(nil), columns...))
+	} else if s.CustomTable != nil {
 		var row table.Row
 		for idx := range columns {
 			row = append(row, columns[idx])
