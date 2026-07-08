@@ -180,6 +180,14 @@ func (o *GetOptions) Complete(cmd *cobra.Command, args []string) error {
 
 	o.NoHeaders = cmdutil.GetFlagBool(cmd, "no-headers")
 
+	// If the user didn't pass --template, resolve the per-context/per-namespace
+	// default from config.yaml, falling back to "default".
+	if !cmd.Flag("template").Changed {
+		if cfg, err := utils.LoadConfig(); err == nil {
+			o.Template = cfg.ResolveDefaultTemplate(o.Context, o.Namespace)
+		}
+	}
+
 	return nil
 }
 
