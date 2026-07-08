@@ -57,6 +57,8 @@ type GetOptions struct {
 	EnableCustomTable bool
 	Columns           []string
 	Output            string
+	SortColumn        string
+	FilterExprs       []string
 
 	factory cmdutil.Factory
 	args    []string
@@ -179,7 +181,7 @@ func (o *GetOptions) list() error {
 		return err
 	}
 
-	if o.Output != "" {
+	if o.Output != "" || o.SortColumn != "" || len(o.FilterExprs) > 0 {
 		return o.emitStructured(printer, infos)
 	}
 
@@ -207,7 +209,27 @@ func (o *GetOptions) emitStructured(printer *CustomColumnsPrinter, infos []*reso
 			return fmt.Errorf("failed to render row: %w", err)
 		}
 	}
-	return renderRows(o.Out, o.Output, printer.Headers, rows)
+
+	if len(o.FilterExprs) > 0 {
+		filtered, err := filterRows(printer.Headers, rows, o.FilterExprs)
+		if err != nil {
+			return err
+		}
+		rows = filtered
+	}
+
+	if o.SortColumn != "" {
+		if err := sortRows(printer.Headers, rows, o.SortColumn); err != nil {
+			return err
+		}
+	}
+
+	if o.Output != "" {
+		return renderRows(o.Out, o.Output, printer.Headers, rows)
+	}
+
+	// No explicit -o: render the standard table using our own writer.
+	return renderRows(o.Out, "table", printer.Headers, rows)
 }
 
 func (o *GetOptions) watch() error {
@@ -396,6 +418,8 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Name of the column template to use (without extension).")
 	cmd.Flags().StringSliceVarP(&o.Columns, "columns", "c", nil, "Comma-separated list of column headers to display (subset of the template's columns, case-insensitive).")
 	cmd.Flags().StringVarP(&o.Output, "output", "o", "", "Output format. One of: json, yaml, csv. If empty, prints the standard table.")
+	cmd.Flags().StringVar(&o.SortColumn, "sort-by", "", "Column header to sort rows by (case-insensitive). Numeric strings sort numerically.")
+	cmd.Flags().StringArrayVar(&o.FilterExprs, "filter", nil, "Filter rows by column values: COL=val, COL!=val, COL~regex, COL!~regex (repeatable, ANDed).")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
 	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output with borders.")
