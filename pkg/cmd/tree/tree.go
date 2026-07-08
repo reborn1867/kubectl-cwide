@@ -41,6 +41,7 @@ type TreeOptions struct {
 
 	RulesFile    string
 	RelatedFlags []string
+	MaxDepth     int
 
 	rootResource string
 	rootName     string
@@ -97,6 +98,7 @@ Binding types:
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "Namespace scope for this request")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use")
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", false, "List across all namespaces")
+	cmd.Flags().IntVar(&o.MaxDepth, "max-depth", 0, "Maximum tree depth to render; 0 means unbounded. Cycles are always broken with a (cycle) marker.")
 
 	return cmd
 }
@@ -273,7 +275,7 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 		}
 	}
 
-	RenderTree(rootNode, o.Out)
+	RenderTree(rootNode, o.Out, o.MaxDepth)
 	return nil
 }
 

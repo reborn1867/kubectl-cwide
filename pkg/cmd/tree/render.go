@@ -7,21 +7,38 @@ import (
 
 	"github.com/xlab/treeprint"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/duration"
 )
 
 // RenderTree prints the tree to out using Unicode box-drawing characters.
-func RenderTree(root *TreeNode, out io.Writer) {
+// maxDepth <= 0 means unbounded. Cycles (revisits of the same UID) are broken
+// with a "(cycle)" marker so the walk always terminates.
+func RenderTree(root *TreeNode, out io.Writer, maxDepth int) {
 	t := treeprint.NewWithRoot(formatNode(root))
-	addChildren(t, root)
+	visited := map[types.UID]bool{root.UID: true}
+	addChildren(t, root, visited, 1, maxDepth)
 	fmt.Fprint(out, t.String())
 }
 
-func addChildren(branch treeprint.Tree, node *TreeNode) {
+func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bool, depth, maxDepth int) {
+	if maxDepth > 0 && depth > maxDepth {
+		if len(node.Children) > 0 {
+			branch.AddNode(fmt.Sprintf("... (%d more, --max-depth=%d)", len(node.Children), maxDepth))
+		}
+		return
+	}
 	for _, child := range node.Children {
+		if child.UID != "" && visited[child.UID] {
+			branch.AddNode(formatNode(child) + "  (cycle)")
+			continue
+		}
+		if child.UID != "" {
+			visited[child.UID] = true
+		}
 		if len(child.Children) > 0 {
 			sub := branch.AddBranch(formatNode(child))
-			addChildren(sub, child)
+			addChildren(sub, child, visited, depth+1, maxDepth)
 		} else {
 			branch.AddNode(formatNode(child))
 		}
