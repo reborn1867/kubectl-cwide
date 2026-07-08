@@ -3,11 +3,34 @@ package funcs
 import (
 	"encoding/base64"
 	"fmt"
+	"os"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	"k8s.io/apimachinery/pkg/util/duration"
 )
+
+// colorDisabled overrides the NO_COLOR env var when set to true.
+// Set via SetColorDisabled (from the --no-color flag on the root command).
+var colorDisabled atomic.Bool
+
+// SetColorDisabled forces color output on or off regardless of NO_COLOR env.
+func SetColorDisabled(disabled bool) {
+	colorDisabled.Store(disabled)
+}
+
+// colorEnabled reports whether ANSI color escapes should be emitted.
+// It's disabled when NO_COLOR is set (any value) or SetColorDisabled(true) was called.
+func colorEnabled() bool {
+	if colorDisabled.Load() {
+		return false
+	}
+	if _, ok := os.LookupEnv("NO_COLOR"); ok {
+		return false
+	}
+	return true
+}
 
 // HumanBytes formats an integer or numeric-string byte count using SI-like
 // binary units (KiB, MiB, GiB, TiB, PiB). Non-numeric input is returned as-is.
@@ -76,7 +99,7 @@ func B64Dec(s string) string {
 // color: one of "red", "green", "yellow", "blue", "cyan", "magenta", "gray".
 // Unrecognized colors return the text unwrapped.
 func ColorIf(cond bool, color, text string) string {
-	if !cond {
+	if !cond || !colorEnabled() {
 		return text
 	}
 	code, ok := ansiColorCodes[color]
