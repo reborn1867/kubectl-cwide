@@ -6,6 +6,7 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/kubectl-cwide/pkg/cmd/alias"
+	"github.com/kubectl-cwide/pkg/cmd/completion"
 	"github.com/kubectl-cwide/pkg/cmd/config"
 	configmapCmd "github.com/kubectl-cwide/pkg/cmd/configmap"
 	"github.com/kubectl-cwide/pkg/cmd/get"
@@ -44,6 +45,7 @@ display resources using those templates.`,
 	cmd.AddCommand(configmapCmd.NewCmdConfigMap())
 	cmd.AddCommand(tree.NewCmdTree(streams))
 	cmd.AddCommand(alias.NewCmdAlias())
+	cmd.AddCommand(completion.NewCmdCompletion())
 
 	return cmd
 }
