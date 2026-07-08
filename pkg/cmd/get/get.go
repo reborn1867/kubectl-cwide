@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
@@ -74,24 +75,74 @@ func NewGetOptions(streams genericiooptions.IOStreams) *GetOptions {
 }
 
 // resolveTemplatePrinter finds the template file (.yaml first, then .tpl) and creates the appropriate printer.
+// Shared helpers under <rootPath>/_shared/*.tpl are concatenated at the top of .tpl template bodies before parsing,
+// and merged into the `helpers` field of .yaml templates.
 func resolveTemplatePrinter(rootPath, crdTemplateDir, templateName string, decoder runtime.Decoder, restConfig *rest.Config) (*CustomColumnsPrinter, error) {
 	dir := filepath.Join(rootPath, crdTemplateDir)
+	sharedHelpers, _ := loadSharedHelpers(rootPath)
 
 	// Try .yaml first
 	yamlPath := filepath.Join(dir, templateName+".yaml")
 	if data, err := os.ReadFile(yamlPath); err == nil {
+		if sharedHelpers != "" {
+			data = injectYAMLHelpers(data, sharedHelpers)
+		}
 		return NewCustomColumnsPrinterFromYAML(data, decoder, restConfig)
 	}
 
 	// Fall back to .tpl
 	tplPath := filepath.Join(dir, templateName+".tpl")
-	file, err := os.Open(tplPath)
+	data, err := os.ReadFile(tplPath)
 	if err != nil {
 		return nil, fmt.Errorf("template not found (tried %s.yaml and %s.tpl in %s)", templateName, templateName, dir)
 	}
-	defer file.Close()
 
-	return NewCustomColumnsPrinterFromTemplate(file, decoder, restConfig)
+	if sharedHelpers != "" {
+		data = append([]byte(sharedHelpers+"\n"), data...)
+	}
+	return NewCustomColumnsPrinterFromTemplate(strings.NewReader(string(data)), decoder, restConfig)
+}
+
+// loadSharedHelpers concatenates every *.tpl file under <rootPath>/_shared/
+// so `{{ template "name" . }}` calls from templates can resolve helpers
+// defined once and reused everywhere.
+func loadSharedHelpers(rootPath string) (string, error) {
+	sharedDir := filepath.Join(rootPath, "_shared")
+	entries, err := os.ReadDir(sharedDir)
+	if err != nil {
+		return "", err // no shared/ dir is fine, caller ignores the error
+	}
+	var b strings.Builder
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		if !strings.HasSuffix(e.Name(), ".tpl") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(sharedDir, e.Name()))
+		if err != nil {
+			continue
+		}
+		b.Write(data)
+		b.WriteString("\n")
+	}
+	return b.String(), nil
+}
+
+// injectYAMLHelpers appends sharedHelpers to the YAML template's `helpers`
+// field. If the field does not exist, it's created.
+func injectYAMLHelpers(data []byte, sharedHelpers string) []byte {
+	// Cheap textual merge: if the file already has a `helpers: |` block,
+	// leave that alone (the YAML parser can only handle one). Otherwise
+	// prepend a new one.
+	if strings.Contains(string(data), "\nhelpers:") || strings.HasPrefix(string(data), "helpers:") {
+		return data
+	}
+	// indent each helper line by 2 spaces for the block scalar
+	indented := "  " + strings.ReplaceAll(sharedHelpers, "\n", "\n  ")
+	block := "helpers: |\n" + indented + "\n"
+	return append([]byte(block), data...)
 }
 
 // Complete resolves flags and sets up the factory.
