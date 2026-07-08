@@ -33,6 +33,14 @@ var DefaultMap = template.FuncMap{
 	"include":       includeFun(nil, map[string]int{}),
 	"tpl":           tplFun(nil, map[string]int{}, false),
 	"progressBar":   progressBar,
+
+	// General-purpose helpers for column templates.
+	"humanBytes": HumanBytes,
+	"age":        Age,
+	"truncate":   Truncate,
+	"b64dec":     B64Dec,
+	"colorIf":    ColorIf,
+	"safeIndex":  SafeIndex,
 }
 
 // toYAML takes an interface, marshals it to yaml, and returns a string. It will
