@@ -35,9 +35,10 @@ is specified.`,
 			repo := cmd.Flag("repo").Value.String()
 			resource := cmd.Flag("resource").Value.String()
 			templateName := cmd.Flag("template").Value.String()
+			ref := cmd.Flag("ref").Value.String()
 
 			// Resolve the remote directory for this resource
-			entries, err := listContents(repo, basePath)
+			entries, err := listContentsAt(repo, basePath, ref)
 			if err != nil {
 				return fmt.Errorf("failed to list marketplace: %w", err)
 			}
@@ -61,7 +62,7 @@ is specified.`,
 			fileName := templateName + ".yaml"
 
 			// Find the file in the remote directory
-			files, err := listContents(repo, basePath+"/"+remoteDir)
+			files, err := listContentsAt(repo, basePath+"/"+remoteDir, ref)
 			if err != nil {
 				return fmt.Errorf("failed to list templates in %s: %w", remoteDir, err)
 			}
@@ -104,13 +105,26 @@ is specified.`,
 				return fmt.Errorf("failed to write template: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Installed template: %s\n", localPath)
+			// Record the pin (best-effort; a failure here doesn't fail the install).
+			if lf, err := LoadLockFile(); err == nil {
+				lf.Upsert(MarketplacePin{
+					Repo: repo, Resource: resource, Template: templateName, Ref: ref,
+				})
+				_ = lf.Save()
+			}
+
+			if ref != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Installed template: %s (pinned to %s)\n", localPath, ref)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Installed template: %s\n", localPath)
+			}
 			return nil
 		},
 	}
 
 	installCMD.Flags().StringP("resource", "r", "", "Resource type (e.g. pod, deployment)")
 	installCMD.Flags().StringP("template", "t", "", "Template name to install (without extension)")
+	installCMD.Flags().String("ref", "", "Pin to a specific git ref (branch, tag, or commit SHA). Recorded in ~/.kubectl-cwide/marketplace.lock.")
 	installCMD.Flags().BoolVar(&force, "force", false, "Overwrite existing template file")
 	installCMD.MarkFlagRequired("resource")
 	installCMD.MarkFlagRequired("template")
