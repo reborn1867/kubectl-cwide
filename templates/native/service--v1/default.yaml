@@ -1,0 +1,17 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: TYPE
+    fieldSpec: .spec.type
+  - header: CLUSTER_IP
+    fieldSpec: .spec.clusterIP
+  - header: EXTERNAL_IP
+    template: '{{- if .spec.externalIPs -}}{{- range $i, $ip := .spec.externalIPs -}}{{- if $i -}},{{- end -}}{{ $ip }}{{- end -}}{{- else if .status.loadBalancer.ingress -}}{{- range $i, $ing := .status.loadBalancer.ingress -}}{{- if $i -}},{{- end -}}{{ if $ing.ip }}{{ $ing.ip }}{{ else }}{{ $ing.hostname }}{{ end }}{{- end -}}{{- else -}}<none>{{- end -}}'
+  - header: PORTS
+    template: '{{- range $i, $p := .spec.ports -}}{{- if $i -}},{{- end -}}{{ $p.port }}{{ if $p.nodePort }}:{{ $p.nodePort }}{{ end }}/{{ $p.protocol }}{{- end -}}'
+  - header: SELECTOR
+    template: '{{- range $k, $v := .spec.selector -}}{{ $k }}={{ $v }} {{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

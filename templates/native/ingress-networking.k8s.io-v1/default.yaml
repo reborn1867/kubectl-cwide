@@ -1,0 +1,17 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: CLASS
+    fieldSpec: .spec.ingressClassName
+  - header: HOSTS
+    template: '{{- range $i, $r := .spec.rules -}}{{- if $i -}},{{- end -}}{{ $r.host }}{{- end -}}'
+  - header: ADDRESS
+    template: '{{- range $i, $ing := .status.loadBalancer.ingress -}}{{- if $i -}},{{- end -}}{{ if $ing.ip }}{{ $ing.ip }}{{ else }}{{ $ing.hostname }}{{ end }}{{- end -}}'
+  - header: PORTS
+    template: '{{- if .spec.tls -}}80,443{{ else }}80{{ end }}'
+  - header: PATHS
+    template: '{{- range $r := .spec.rules -}}{{- range $p := $r.http.paths -}}{{ $p.path }}→{{ $p.backend.service.name }}:{{ $p.backend.service.port.number }} {{- end -}}{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

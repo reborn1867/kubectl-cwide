@@ -54,6 +54,7 @@ type GetOptions struct {
 	Context           string
 	TemplateRootPath  string
 	EnableCustomTable bool
+	Columns           []string
 
 	factory cmdutil.Factory
 	args    []string
@@ -317,6 +318,12 @@ func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinte
 		return nil, err
 	}
 
+	if len(o.Columns) > 0 {
+		if err := printer.SelectColumns(o.Columns); err != nil {
+			return nil, err
+		}
+	}
+
 	if o.EnableCustomTable {
 		printer.WithCustomTable()
 	}
@@ -370,6 +377,7 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 	cmdutil.AddSubresourceFlags(cmd, &o.Subresource, "If specified, gets the subresource of the requested object.")
 
 	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Name of the column template to use (without extension).")
+	cmd.Flags().StringSliceVarP(&o.Columns, "columns", "c", nil, "Comma-separated list of column headers to display (subset of the template's columns, case-insensitive).")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
 	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output with borders.")

@@ -1,0 +1,19 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: STATUS
+    fieldSpec: .status.phase
+  - header: VOLUME
+    fieldSpec: .spec.volumeName
+  - header: CAPACITY
+    fieldSpec: .status.capacity.storage
+  - header: ACCESS
+    template: '{{- range $i, $m := .spec.accessModes -}}{{- if $i -}},{{- end -}}{{ $m }}{{- end -}}'
+  - header: STORAGECLASS
+    fieldSpec: .spec.storageClassName
+  - header: VOLUME_MODE
+    fieldSpec: .spec.volumeMode
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

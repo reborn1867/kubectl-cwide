@@ -1,0 +1,15 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: CPU_REQ
+    template: '{{- $sum := "" -}}{{- range .spec.containers -}}{{- if .resources.requests.cpu -}}{{- $sum = printf "%s%s " $sum .resources.requests.cpu -}}{{- end -}}{{- end -}}{{ if $sum }}{{ $sum }}{{ else }}-{{ end }}'
+  - header: CPU_LIM
+    template: '{{- $sum := "" -}}{{- range .spec.containers -}}{{- if .resources.limits.cpu -}}{{- $sum = printf "%s%s " $sum .resources.limits.cpu -}}{{- end -}}{{- end -}}{{ if $sum }}{{ $sum }}{{ else }}-{{ end }}'
+  - header: MEM_REQ
+    template: '{{- $sum := "" -}}{{- range .spec.containers -}}{{- if .resources.requests.memory -}}{{- $sum = printf "%s%s " $sum .resources.requests.memory -}}{{- end -}}{{- end -}}{{ if $sum }}{{ $sum }}{{ else }}-{{ end }}'
+  - header: MEM_LIM
+    template: '{{- $sum := "" -}}{{- range .spec.containers -}}{{- if .resources.limits.memory -}}{{- $sum = printf "%s%s " $sum .resources.limits.memory -}}{{- end -}}{{- end -}}{{ if $sum }}{{ $sum }}{{ else }}-{{ end }}'
+  - header: QOS
+    fieldSpec: .status.qosClass

@@ -277,6 +277,42 @@ type CustomColumnsPrinter struct {
 	CustomTable table.Writer
 }
 
+// SelectColumns filters the printer's Columns/Headers to the named subset,
+// preserving the order given in `names`. Names are matched case-insensitively
+// against Column.Header. Unknown names are reported as an error.
+func (s *CustomColumnsPrinter) SelectColumns(names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	byHeader := make(map[string]Column, len(s.Columns))
+	for _, c := range s.Columns {
+		byHeader[strings.ToUpper(c.Header)] = c
+	}
+	newCols := make([]Column, 0, len(names))
+	newHeaders := make([]string, 0, len(names))
+	var missing []string
+	for _, n := range names {
+		key := strings.ToUpper(strings.TrimSpace(n))
+		c, ok := byHeader[key]
+		if !ok {
+			missing = append(missing, n)
+			continue
+		}
+		newCols = append(newCols, c)
+		newHeaders = append(newHeaders, c.Header)
+	}
+	if len(missing) > 0 {
+		available := make([]string, 0, len(s.Columns))
+		for _, c := range s.Columns {
+			available = append(available, c.Header)
+		}
+		return fmt.Errorf("unknown column(s) %v; available: %v", missing, available)
+	}
+	s.Columns = newCols
+	s.Headers = newHeaders
+	return nil
+}
+
 func (s *CustomColumnsPrinter) WithCustomTable() *CustomColumnsPrinter {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
