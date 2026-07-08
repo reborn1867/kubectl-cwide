@@ -20,16 +20,24 @@ func NewCmdAliasSet() *cobra.Command {
 		Short: "Create or update a resource type alias",
 		Long: `Set a custom alias for a Kubernetes resource type.
 
+The RESOURCE argument may be a single resource type or a comma-separated list
+(an "alias group") — e.g. "pod,service,configmap". Comma-separated targets pass
+through to the resource builder unchanged, so 'kubectl cwide get <alias>' lists
+all of them at once.
+
 The alias is checked for conflicts against:
   - Existing aliases in the config
   - Built-in Kubernetes resource short names (via Discovery API)
 
 A warning is printed if the alias conflicts with an existing name, but the
 alias is still saved.`,
-		Example: `  # Set 'pd' as an alias for 'pods'
+		Example: `  # Single-resource alias
   kubectl cwide alias set pd pods
 
-  # Set 'vw' as an alias for 'validatingwebhookconfigurations'
+  # Alias group: 'core' lists pods, services, and configmaps together
+  kubectl cwide alias set core pod,service,configmap
+
+  # Long name → short alias
   kubectl cwide alias set vw validatingwebhookconfigurations`,
 		Args: cobra.ExactArgs(2),
 		RunE: func(cmd *cobra.Command, args []string) error {
