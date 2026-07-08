@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kubectl-cwide/pkg/clients"
 	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
@@ -15,11 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/client-go/dynamic"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"k8s.io/utils/ptr"
 )
 
 // TreeNode represents one resource in the tree.
@@ -119,20 +118,7 @@ func (o *TreeOptions) Complete(cmd *cobra.Command, args []string) error {
 	o.rootResource = utils.ResolveAliasString(o.rootResource)
 
 	// Set up factory
-	kubeConfigFlags := genericclioptions.NewConfigFlags(true).
-		WithDeprecatedPasswordFlag().
-		WithDiscoveryBurst(300).
-		WithDiscoveryQPS(50.0)
-
-	if v := cmd.Flag("kubeconfig"); v != nil && v.Changed {
-		kubeConfigFlags.KubeConfig = ptr.To(v.Value.String())
-	}
-	if o.Context != "" {
-		kubeConfigFlags.Context = &o.Context
-	}
-
-	matchVersionFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
-	o.factory = cmdutil.NewFactory(matchVersionFlags)
+	o.factory = clients.FactoryFromCmd(cmd, o.Context)
 
 	// Resolve namespace
 	var err error

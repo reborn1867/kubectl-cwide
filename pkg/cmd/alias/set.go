@@ -4,12 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kubectl-cwide/pkg/clients"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/client-go/discovery"
-	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"k8s.io/utils/ptr"
 )
 
 func NewCmdAliasSet() *cobra.Command {
@@ -93,20 +91,7 @@ type shortNameConflict struct {
 }
 
 func checkK8sShortNameConflicts(cmd *cobra.Command, context, alias string) []shortNameConflict {
-	kubeConfigFlags := genericclioptions.NewConfigFlags(true).
-		WithDeprecatedPasswordFlag().
-		WithDiscoveryBurst(300).
-		WithDiscoveryQPS(50.0)
-
-	if v := cmd.Flag("kubeconfig"); v != nil && v.Changed {
-		kubeConfigFlags.KubeConfig = ptr.To(v.Value.String())
-	}
-	if context != "" {
-		kubeConfigFlags.Context = &context
-	}
-
-	matchVersionFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
-	factory := cmdutil.NewFactory(matchVersionFlags)
+	factory := clients.FactoryFromCmd(cmd, context)
 
 	discoveryClient, err := factory.ToDiscoveryClient()
 	if err != nil {

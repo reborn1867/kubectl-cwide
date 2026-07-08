@@ -12,13 +12,13 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"k8s.io/utils/ptr"
+
+	"github.com/kubectl-cwide/pkg/clients"
 )
 
 const (
@@ -117,23 +117,7 @@ The output is a single table sorted by APIVERSION, KIND, NAMESPACE, NAME.`,
 }
 
 func (o *AllResourcesOptions) Complete(cmd *cobra.Command) error {
-	kubeConfigFlags := genericclioptions.NewConfigFlags(true).
-		WithDeprecatedPasswordFlag().
-		WithDiscoveryBurst(300).
-		WithDiscoveryQPS(50.0)
-
-	if v := cmd.Flag("kubeconfig"); v != nil && v.Changed {
-		kubeConfigFlags.KubeConfig = ptr.To(v.Value.String())
-	}
-	if o.Context != "" {
-		kubeConfigFlags.Context = &o.Context
-	}
-	if o.Namespace != "" && !o.AllNamespaces {
-		kubeConfigFlags.Namespace = ptr.To(o.Namespace)
-	}
-
-	matchVersionFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
-	o.factory = cmdutil.NewFactory(matchVersionFlags)
+	o.factory = clients.FactoryFromCmd(cmd, o.Context)
 
 	if o.Namespace == "" && !o.AllNamespaces {
 		ns, _, err := o.factory.ToRawKubeConfigLoader().Namespace()
