@@ -42,6 +42,7 @@ type TreeOptions struct {
 	RulesFile    string
 	RelatedFlags []string
 	MaxDepth     int
+	Reverse      bool
 
 	rootResource string
 	rootName     string
@@ -99,6 +100,7 @@ Binding types:
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use")
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", false, "List across all namespaces")
 	cmd.Flags().IntVar(&o.MaxDepth, "max-depth", 0, "Maximum tree depth to render; 0 means unbounded. Cycles are always broken with a (cycle) marker.")
+	cmd.Flags().BoolVar(&o.Reverse, "reverse", false, "Show ancestors (via ownerReferences) instead of descendants.")
 
 	return cmd
 }
@@ -183,6 +185,9 @@ func (o *TreeOptions) Validate() error {
 	if o.rootResource == "" || o.rootName == "" {
 		return fmt.Errorf("root resource and name are required")
 	}
+	if o.Reverse {
+		return nil // ancestor walk uses ownerReferences, no relations required
+	}
 	if len(o.relations) == 0 {
 		return fmt.Errorf("at least one relation is required (use --rules or --related)")
 	}
@@ -215,6 +220,10 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 	}
 
 	rootNode := nodeFromUnstructured(rootObj)
+
+	if o.Reverse {
+		return o.runReverse(ctx, rootNode)
+	}
 
 	// Build tree: topological resolution by parent dependency
 	nodesByResource := map[string][]*TreeNode{
