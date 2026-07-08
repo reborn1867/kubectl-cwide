@@ -1,7 +1,6 @@
 package configmap
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,6 +41,7 @@ Use --force to always overwrite regardless of priority.`,
   # Force overwrite all local templates
   kubectl cwide configmap sync --force`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			cmName := cmd.Flag("name").Value.String()
 			cmNamespace := cmd.Flag("cm-namespace").Value.String()
 
@@ -60,7 +60,7 @@ Use --force to always overwrite regardless of priority.`,
 				return fmt.Errorf("failed to create Kubernetes client: %w", err)
 			}
 
-			cm, err := clientset.CoreV1().ConfigMaps(cmNamespace).Get(context.TODO(), cmName, metav1.GetOptions{})
+			cm, err := clientset.CoreV1().ConfigMaps(cmNamespace).Get(ctx, cmName, metav1.GetOptions{})
 			if err != nil {
 				return fmt.Errorf("failed to get ConfigMap %s/%s: %w", cmNamespace, cmName, err)
 			}

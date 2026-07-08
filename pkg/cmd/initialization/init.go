@@ -1,7 +1,6 @@
 package initialization
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -49,6 +48,7 @@ Existing template files are preserved and will not be overwritten.`,
 }
 
 func runInit(cmd *cobra.Command, args []string) error {
+	ctx := cmd.Context()
 	config, err := ctrl.GetConfig()
 	if err != nil {
 		return fmt.Errorf("failed to load kubeconfig: %w", err)
@@ -71,7 +71,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to add apiextensions v1 to scheme: %w", err)
 	}
 
-	crdList, err := clientSet.ApiextensionsV1().CustomResourceDefinitions().List(context.TODO(), metav1.ListOptions{})
+	crdList, err := clientSet.ApiextensionsV1().CustomResourceDefinitions().List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to list CRDs: %w", err)
 	}

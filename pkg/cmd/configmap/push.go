@@ -1,7 +1,6 @@
 package configmap
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -40,6 +39,7 @@ only templates for a specific resource type.`,
   # Push to a specific ConfigMap
   kubectl cwide configmap push --name my-templates --cm-namespace default`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			cmName := cmd.Flag("name").Value.String()
 			cmNamespace := cmd.Flag("cm-namespace").Value.String()
 
@@ -96,7 +96,7 @@ only templates for a specific resource type.`,
 
 			cmClient := clientset.CoreV1().ConfigMaps(cmNamespace)
 
-			existing, err := cmClient.Get(context.TODO(), cmName, metav1.GetOptions{})
+			existing, err := cmClient.Get(ctx, cmName, metav1.GetOptions{})
 			if errors.IsNotFound(err) {
 				// Create the ConfigMap
 				cm := &corev1.ConfigMap{
@@ -106,7 +106,7 @@ only templates for a specific resource type.`,
 					},
 					Data: data,
 				}
-				if _, err := cmClient.Create(context.TODO(), cm, metav1.CreateOptions{}); err != nil {
+				if _, err := cmClient.Create(ctx, cm, metav1.CreateOptions{}); err != nil {
 					return fmt.Errorf("failed to create ConfigMap: %w", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Created ConfigMap %s/%s with %d template(s).\n", cmNamespace, cmName, len(data))
@@ -122,7 +122,7 @@ only templates for a specific resource type.`,
 			for k, v := range data {
 				existing.Data[k] = v
 			}
-			if _, err := cmClient.Update(context.TODO(), existing, metav1.UpdateOptions{}); err != nil {
+			if _, err := cmClient.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("failed to update ConfigMap: %w", err)
 			}
 
