@@ -1,0 +1,13 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: KEYS
+    template: '{{ len (.data | default dict) }}'
+  - header: BINARY_KEYS
+    template: '{{ len (.binaryData | default dict) }}'
+  - header: OWNER
+    template: '{{- range .metadata.ownerReferences -}}{{ .kind }}/{{ .name }}{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

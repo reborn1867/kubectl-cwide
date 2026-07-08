@@ -1,0 +1,21 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: READY
+    template: '{{- $r := 0 -}}{{- $t := 0 -}}{{- range .status.containerStatuses -}}{{- $t = add $t 1 -}}{{- if .ready -}}{{- $r = add $r 1 -}}{{- end -}}{{- end -}}{{ $r }}/{{ $t }}'
+  - header: PHASE
+    fieldSpec: .status.phase
+  - header: REASON
+    template: '{{- range .status.containerStatuses -}}{{- if .state.waiting -}}{{ .state.waiting.reason }}{{- else if .state.terminated -}}{{ .state.terminated.reason }}{{- end -}}{{- end -}}'
+  - header: RESTARTS
+    template: '{{- $n := 0 -}}{{- range .status.containerStatuses -}}{{- $n = add $n .restartCount -}}{{- end -}}{{ $n }}'
+  - header: NODE
+    fieldSpec: .spec.nodeName
+  - header: POD_IP
+    fieldSpec: .status.podIP
+  - header: QOS
+    fieldSpec: .status.qosClass
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

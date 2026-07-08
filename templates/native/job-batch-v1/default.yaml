@@ -1,0 +1,21 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: COMPLETIONS
+    template: '{{ .status.succeeded | default 0 }}/{{ .spec.completions | default 1 }}'
+  - header: ACTIVE
+    fieldSpec: .status.active
+  - header: FAILED
+    fieldSpec: .status.failed
+  - header: PARALLELISM
+    fieldSpec: .spec.parallelism
+  - header: BACKOFF_LIMIT
+    fieldSpec: .spec.backoffLimit
+  - header: STATUS
+    template: '{{- range .status.conditions -}}{{- if eq .status "True" -}}{{ .type }}{{- end -}}{{- end -}}'
+  - header: DURATION
+    template: '{{ if and .status.startTime .status.completionTime }}{{ .status.startTime }} → {{ .status.completionTime }}{{ else if .status.startTime }}started {{ .status.startTime }}{{ end }}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

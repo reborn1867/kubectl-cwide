@@ -1,0 +1,11 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: CONTAINER
+    template: '{{- range $i, $c := .spec.containers -}}{{- if $i -}},{{- end -}}{{ $c.name }}{{- end -}}'
+  - header: IMAGE
+    template: '{{- range $i, $c := .spec.containers -}}{{- if $i -}},{{- end -}}{{ $c.image }}{{- end -}}'
+  - header: IMAGE_PULL_POLICY
+    template: '{{- range $i, $c := .spec.containers -}}{{- if $i -}},{{- end -}}{{ $c.imagePullPolicy }}{{- end -}}'

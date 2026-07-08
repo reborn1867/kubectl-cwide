@@ -23,7 +23,16 @@ type GitHubEntry struct {
 
 // listContents fetches the contents of a directory in a GitHub repository.
 func listContents(repo, path string) ([]GitHubEntry, error) {
+	return listContentsAt(repo, path, "")
+}
+
+// listContentsAt fetches contents of a directory at a specific ref (branch,
+// tag, or commit SHA). Empty ref uses the repo's default branch.
+func listContentsAt(repo, path, ref string) ([]GitHubEntry, error) {
 	url := fmt.Sprintf("%s/repos/%s/contents/%s", apiBase, repo, path)
+	if ref != "" {
+		url += "?ref=" + ref
+	}
 
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {

@@ -6,9 +6,11 @@ import (
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 
 	"github.com/kubectl-cwide/pkg/cmd/alias"
+	"github.com/kubectl-cwide/pkg/cmd/completion"
 	"github.com/kubectl-cwide/pkg/cmd/config"
 	configmapCmd "github.com/kubectl-cwide/pkg/cmd/configmap"
 	"github.com/kubectl-cwide/pkg/cmd/get"
+	"github.com/kubectl-cwide/pkg/parser/funcs"
 	"github.com/kubectl-cwide/pkg/cmd/initialization"
 	"github.com/kubectl-cwide/pkg/cmd/marketplace"
 	"github.com/kubectl-cwide/pkg/cmd/template"
@@ -28,6 +30,11 @@ expressions, Go text/template functions, and Helm-style helpers.
 Use 'init' to auto-generate templates for all resources in a cluster, then 'get' to
 display resources using those templates.`,
 		SilenceUsage: true,
+		PersistentPreRun: func(c *cobra.Command, args []string) {
+			if noColor, _ := c.Flags().GetBool("no-color"); noColor {
+				funcs.SetColorDisabled(true)
+			}
+		},
 		RunE: func(c *cobra.Command, args []string) error {
 			return c.Help()
 		},
@@ -35,6 +42,7 @@ display resources using those templates.`,
 
 	cmd.PersistentFlags().String("template-path", "/tmp/cwide", "Root directory for column template files")
 	cmd.PersistentFlags().String("kubeconfig", "", "Path to a kubeconfig file. If unset, the KUBECONFIG env var or default path is used")
+	cmd.PersistentFlags().Bool("no-color", false, "Disable ANSI color output (respects NO_COLOR env var as well)")
 
 	cmd.AddCommand(initialization.NewCmdInit())
 	cmd.AddCommand(get.NewCmdGet(streams))
@@ -44,6 +52,7 @@ display resources using those templates.`,
 	cmd.AddCommand(configmapCmd.NewCmdConfigMap())
 	cmd.AddCommand(tree.NewCmdTree(streams))
 	cmd.AddCommand(alias.NewCmdAlias())
+	cmd.AddCommand(completion.NewCmdCompletion())
 
 	return cmd
 }

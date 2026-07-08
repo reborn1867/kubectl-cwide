@@ -1,0 +1,17 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: DESIRED
+    fieldSpec: .spec.replicas
+  - header: CURRENT
+    fieldSpec: .status.replicas
+  - header: READY
+    fieldSpec: .status.readyReplicas
+  - header: OWNER
+    template: '{{- range .metadata.ownerReferences -}}{{ .kind }}/{{ .name }}{{- end -}}'
+  - header: IMAGE
+    template: '{{- range $i, $c := .spec.template.spec.containers -}}{{- if $i -}},{{- end -}}{{ $c.image }}{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

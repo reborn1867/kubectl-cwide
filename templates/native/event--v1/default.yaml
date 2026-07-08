@@ -1,0 +1,17 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: LAST_SEEN
+    template: '{{ .lastTimestamp | default .eventTime | default .metadata.creationTimestamp }}'
+  - header: TYPE
+    fieldSpec: .type
+  - header: REASON
+    fieldSpec: .reason
+  - header: OBJECT
+    template: '{{ .involvedObject.kind }}/{{ .involvedObject.name }}'
+  - header: SOURCE
+    template: '{{ .source.component }}{{ if .source.host }}@{{ .source.host }}{{ end }}'
+  - header: COUNT
+    fieldSpec: .count
+  - header: MESSAGE
+    fieldSpec: .message

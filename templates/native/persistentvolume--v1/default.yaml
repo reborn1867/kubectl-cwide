@@ -1,0 +1,19 @@
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: CAPACITY
+    fieldSpec: .spec.capacity.storage
+  - header: ACCESS
+    template: '{{- range $i, $m := .spec.accessModes -}}{{- if $i -}},{{- end -}}{{ $m }}{{- end -}}'
+  - header: RECLAIM
+    fieldSpec: .spec.persistentVolumeReclaimPolicy
+  - header: STATUS
+    fieldSpec: .status.phase
+  - header: CLAIM
+    template: '{{- with .spec.claimRef -}}{{ .namespace }}/{{ .name }}{{- end -}}'
+  - header: STORAGECLASS
+    fieldSpec: .spec.storageClassName
+  - header: VOLUME_SOURCE
+    template: '{{- if .spec.hostPath -}}hostPath{{ else if .spec.nfs }}nfs{{ else if .spec.csi }}csi:{{ .spec.csi.driver }}{{ else if .spec.awsElasticBlockStore }}ebs{{ else if .spec.gcePersistentDisk }}gce{{ else if .spec.azureDisk }}azure{{ else }}other{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

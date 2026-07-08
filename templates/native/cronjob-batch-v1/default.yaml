@@ -1,0 +1,21 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: SCHEDULE
+    fieldSpec: .spec.schedule
+  - header: TIMEZONE
+    fieldSpec: .spec.timeZone
+  - header: SUSPEND
+    fieldSpec: .spec.suspend
+  - header: ACTIVE
+    template: '{{ len (.status.active | default list) }}'
+  - header: LAST_SCHEDULE
+    fieldSpec: .status.lastScheduleTime
+  - header: LAST_SUCCESS
+    fieldSpec: .status.lastSuccessfulTime
+  - header: CONCURRENCY
+    fieldSpec: .spec.concurrencyPolicy
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

@@ -1,0 +1,13 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: TYPE
+    fieldSpec: .type
+  - header: KEYS
+    template: '{{- $keys := "" -}}{{- range $k, $v := .data -}}{{- $keys = printf "%s%s " $keys $k -}}{{- end -}}{{ if $keys }}{{ $keys }}{{ else }}<none>{{ end }}'
+  - header: OWNER
+    template: '{{- range .metadata.ownerReferences -}}{{ .kind }}/{{ .name }}{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

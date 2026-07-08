@@ -1,7 +1,6 @@
 package configmap
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +8,7 @@ import (
 
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -16,8 +16,14 @@ import (
 	ctrl "sigs.k8s.io/controller-runtime"
 )
 
+// aliasesConfigMapKey is the data-map key used to store a YAML-marshalled
+// alias map (name → target) so aliases can be shared across a team via the
+// same ConfigMap that carries templates.
+const aliasesConfigMapKey = "__aliases__"
+
 func NewCmdPush() *cobra.Command {
 	var resource string
+	var includeAliases bool
 
 	pushCMD := &cobra.Command{
 		Use:        "push",
@@ -40,6 +46,7 @@ only templates for a specific resource type.`,
   # Push to a specific ConfigMap
   kubectl cwide configmap push --name my-templates --cm-namespace default`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx := cmd.Context()
 			cmName := cmd.Flag("name").Value.String()
 			cmNamespace := cmd.Flag("cm-namespace").Value.String()
 
@@ -77,6 +84,15 @@ only templates for a specific resource type.`,
 				data[key] = string(content)
 			}
 
+			if includeAliases {
+				cfg, err := utils.LoadConfig()
+				if err == nil && len(cfg.Aliases) > 0 {
+					if raw, err := yaml.Marshal(cfg.Aliases); err == nil {
+						data[aliasesConfigMapKey] = string(raw)
+					}
+				}
+			}
+
 			if len(data) == 0 {
 				if resource != "" {
 					return fmt.Errorf("no templates found for resource type %q", resource)
@@ -96,7 +112,7 @@ only templates for a specific resource type.`,
 
 			cmClient := clientset.CoreV1().ConfigMaps(cmNamespace)
 
-			existing, err := cmClient.Get(context.TODO(), cmName, metav1.GetOptions{})
+			existing, err := cmClient.Get(ctx, cmName, metav1.GetOptions{})
 			if errors.IsNotFound(err) {
 				// Create the ConfigMap
 				cm := &corev1.ConfigMap{
@@ -106,7 +122,7 @@ only templates for a specific resource type.`,
 					},
 					Data: data,
 				}
-				if _, err := cmClient.Create(context.TODO(), cm, metav1.CreateOptions{}); err != nil {
+				if _, err := cmClient.Create(ctx, cm, metav1.CreateOptions{}); err != nil {
 					return fmt.Errorf("failed to create ConfigMap: %w", err)
 				}
 				fmt.Fprintf(cmd.OutOrStdout(), "Created ConfigMap %s/%s with %d template(s).\n", cmNamespace, cmName, len(data))
@@ -122,7 +138,7 @@ only templates for a specific resource type.`,
 			for k, v := range data {
 				existing.Data[k] = v
 			}
-			if _, err := cmClient.Update(context.TODO(), existing, metav1.UpdateOptions{}); err != nil {
+			if _, err := cmClient.Update(ctx, existing, metav1.UpdateOptions{}); err != nil {
 				return fmt.Errorf("failed to update ConfigMap: %w", err)
 			}
 
@@ -132,6 +148,7 @@ only templates for a specific resource type.`,
 	}
 
 	pushCMD.Flags().StringVarP(&resource, "resource", "r", "", "Only push templates for this resource type (e.g. pod, deployment)")
+	pushCMD.Flags().BoolVar(&includeAliases, "with-aliases", false, "Also push resource aliases from local config under the reserved key "+aliasesConfigMapKey)
 
 	return pushCMD
 }

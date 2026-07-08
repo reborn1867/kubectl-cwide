@@ -155,7 +155,7 @@ func TestRenderTree(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	RenderTree(root, &buf)
+	RenderTree(root, &buf, 0)
 	output := buf.String()
 
 	// Verify structure

@@ -72,6 +72,10 @@ template name.`,
 				editor = "vi"
 			}
 
+			// Snapshot mtime + size so we can detect the file being
+			// overwritten mid-edit (e.g. by a concurrent configmap sync).
+			preStat, preErr := os.Stat(targetPath)
+
 			editorCmd := exec.Command(editor, targetPath)
 			editorCmd.Stdin = os.Stdin
 			editorCmd.Stdout = os.Stdout
@@ -79,6 +83,18 @@ template name.`,
 
 			if err := editorCmd.Run(); err != nil {
 				return fmt.Errorf("editor exited with error: %w", err)
+			}
+
+			if preErr == nil {
+				postStat, err := os.Stat(targetPath)
+				if err == nil && (postStat.ModTime() != preStat.ModTime() && postStat.Size() != preStat.Size()) {
+					// Both mtime AND size changed — user probably saved. Fine.
+				} else if err == nil && postStat.ModTime() != preStat.ModTime() && postStat.Size() == preStat.Size() {
+					// mtime changed but size didn't — possible sync overwrite of identical content.
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"warning: %s mtime changed during edit but size is unchanged; a concurrent configmap sync may have run — re-check your changes\n",
+						targetPath)
+				}
 			}
 			return nil
 		},

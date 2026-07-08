@@ -275,6 +275,45 @@ type CustomColumnsPrinter struct {
 	*utils.DefaultTableGenerator
 	Headers     []string // - Headers is used to store the headers for the custom columns
 	CustomTable table.Writer
+	// RowSink, when non-nil, captures each row's column values instead of
+	// writing them to the tabwriter. Used by structured output formats.
+	RowSink func(cols []string)
+}
+
+// SelectColumns filters the printer's Columns/Headers to the named subset,
+// preserving the order given in `names`. Names are matched case-insensitively
+// against Column.Header. Unknown names are reported as an error.
+func (s *CustomColumnsPrinter) SelectColumns(names []string) error {
+	if len(names) == 0 {
+		return nil
+	}
+	byHeader := make(map[string]Column, len(s.Columns))
+	for _, c := range s.Columns {
+		byHeader[strings.ToUpper(c.Header)] = c
+	}
+	newCols := make([]Column, 0, len(names))
+	newHeaders := make([]string, 0, len(names))
+	var missing []string
+	for _, n := range names {
+		key := strings.ToUpper(strings.TrimSpace(n))
+		c, ok := byHeader[key]
+		if !ok {
+			missing = append(missing, n)
+			continue
+		}
+		newCols = append(newCols, c)
+		newHeaders = append(newHeaders, c.Header)
+	}
+	if len(missing) > 0 {
+		available := make([]string, 0, len(s.Columns))
+		for _, c := range s.Columns {
+			available = append(available, c.Header)
+		}
+		return fmt.Errorf("unknown column(s) %v; available: %v", missing, available)
+	}
+	s.Columns = newCols
+	s.Headers = newHeaders
+	return nil
 }
 
 func (s *CustomColumnsPrinter) WithCustomTable() *CustomColumnsPrinter {
@@ -303,7 +342,7 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 		defer w.Flush()
 	}
 
-	if s.CustomTable == nil {
+	if s.CustomTable == nil && s.RowSink == nil {
 		t := reflect.TypeOf(obj)
 		if !s.NoHeaders && t != s.lastType {
 			headers := make([]string, len(s.Columns))
@@ -417,7 +456,9 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		multiLinesColumns = append(multiLinesColumns, lines)
 	}
 
-	if s.CustomTable != nil {
+	if s.RowSink != nil {
+		s.RowSink(append([]string(nil), columns...))
+	} else if s.CustomTable != nil {
 		var row table.Row
 		for idx := range columns {
 			row = append(row, columns[idx])

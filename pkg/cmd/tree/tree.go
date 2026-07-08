@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/kubectl-cwide/pkg/clients"
 	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
@@ -15,11 +16,9 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/cli-runtime/pkg/genericclioptions"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/client-go/dynamic"
 	cmdutil "k8s.io/kubectl/pkg/cmd/util"
-	"k8s.io/utils/ptr"
 )
 
 // TreeNode represents one resource in the tree.
@@ -41,6 +40,8 @@ type TreeOptions struct {
 
 	RulesFile    string
 	RelatedFlags []string
+	MaxDepth     int
+	Reverse      bool
 
 	rootResource string
 	rootName     string
@@ -97,6 +98,8 @@ Binding types:
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "Namespace scope for this request")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use")
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", false, "List across all namespaces")
+	cmd.Flags().IntVar(&o.MaxDepth, "max-depth", 0, "Maximum tree depth to render; 0 means unbounded. Cycles are always broken with a (cycle) marker.")
+	cmd.Flags().BoolVar(&o.Reverse, "reverse", false, "Show ancestors (via ownerReferences) instead of descendants.")
 
 	return cmd
 }
@@ -115,20 +118,7 @@ func (o *TreeOptions) Complete(cmd *cobra.Command, args []string) error {
 	o.rootResource = utils.ResolveAliasString(o.rootResource)
 
 	// Set up factory
-	kubeConfigFlags := genericclioptions.NewConfigFlags(true).
-		WithDeprecatedPasswordFlag().
-		WithDiscoveryBurst(300).
-		WithDiscoveryQPS(50.0)
-
-	if v := cmd.Flag("kubeconfig"); v != nil && v.Changed {
-		kubeConfigFlags.KubeConfig = ptr.To(v.Value.String())
-	}
-	if o.Context != "" {
-		kubeConfigFlags.Context = &o.Context
-	}
-
-	matchVersionFlags := cmdutil.NewMatchVersionFlags(kubeConfigFlags)
-	o.factory = cmdutil.NewFactory(matchVersionFlags)
+	o.factory = clients.FactoryFromCmd(cmd, o.Context)
 
 	// Resolve namespace
 	var err error
@@ -181,6 +171,9 @@ func (o *TreeOptions) Validate() error {
 	if o.rootResource == "" || o.rootName == "" {
 		return fmt.Errorf("root resource and name are required")
 	}
+	if o.Reverse {
+		return nil // ancestor walk uses ownerReferences, no relations required
+	}
 	if len(o.relations) == 0 {
 		return fmt.Errorf("at least one relation is required (use --rules or --related)")
 	}
@@ -213,6 +206,10 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 	}
 
 	rootNode := nodeFromUnstructured(rootObj)
+
+	if o.Reverse {
+		return o.runReverse(ctx, rootNode)
+	}
 
 	// Build tree: topological resolution by parent dependency
 	nodesByResource := map[string][]*TreeNode{
@@ -273,7 +270,7 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 		}
 	}
 
-	RenderTree(rootNode, o.Out)
+	RenderTree(rootNode, o.Out, o.MaxDepth)
 	return nil
 }
 

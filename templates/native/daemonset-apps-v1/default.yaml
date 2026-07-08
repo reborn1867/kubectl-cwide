@@ -1,0 +1,21 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: DESIRED
+    fieldSpec: .status.desiredNumberScheduled
+  - header: CURRENT
+    fieldSpec: .status.currentNumberScheduled
+  - header: READY
+    fieldSpec: .status.numberReady
+  - header: UP-TO-DATE
+    fieldSpec: .status.updatedNumberScheduled
+  - header: AVAILABLE
+    fieldSpec: .status.numberAvailable
+  - header: MISSCHEDULED
+    fieldSpec: .status.numberMisscheduled
+  - header: NODE_SELECTOR
+    template: '{{- range $k, $v := .spec.template.spec.nodeSelector -}}{{ $k }}={{ $v }} {{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

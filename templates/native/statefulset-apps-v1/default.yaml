@@ -1,0 +1,19 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: READY
+    template: '{{ .status.readyReplicas | default 0 }}/{{ .spec.replicas | default 0 }}'
+  - header: CURRENT
+    fieldSpec: .status.currentReplicas
+  - header: UPDATED
+    fieldSpec: .status.updatedReplicas
+  - header: SERVICE
+    fieldSpec: .spec.serviceName
+  - header: UPDATE_STRATEGY
+    fieldSpec: .spec.updateStrategy.type
+  - header: IMAGE
+    template: '{{- range $i, $c := .spec.template.spec.containers -}}{{- if $i -}},{{- end -}}{{ $c.image }}{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

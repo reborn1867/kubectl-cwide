@@ -20,7 +20,7 @@ Managing Kubernetes resources often requires printing extra columns for specific
 - **Custom Resource Aliases**: Define short aliases for long resource type names (e.g. `vw` for `validatingwebhookconfigurations`) with automatic resolution in `get` and `tree` commands.
 
 ## Installation
-As a [krew](https://github.com/kubernetes-sigs/krew) plugin, `kubectl-ciwe` can be installed with a simple command as following once it's officially accepted.
+As a [krew](https://github.com/kubernetes-sigs/krew) plugin, `kubectl-cwide` can be installed with a simple command as following once it's officially accepted.
 ```
 kubectl krew install cwide
 ```

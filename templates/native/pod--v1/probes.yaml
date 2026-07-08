@@ -1,0 +1,11 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: LIVENESS
+    template: '{{- range .spec.containers -}}{{- if .livenessProbe -}}{{- with .livenessProbe.httpGet -}}http {{ .path }}:{{ .port }} {{- end -}}{{- with .livenessProbe.tcpSocket -}}tcp :{{ .port }} {{- end -}}{{- with .livenessProbe.exec -}}exec {{- end -}}{{- end -}}{{- end -}}'
+  - header: READINESS
+    template: '{{- range .spec.containers -}}{{- if .readinessProbe -}}{{- with .readinessProbe.httpGet -}}http {{ .path }}:{{ .port }} {{- end -}}{{- with .readinessProbe.tcpSocket -}}tcp :{{ .port }} {{- end -}}{{- with .readinessProbe.exec -}}exec {{- end -}}{{- end -}}{{- end -}}'
+  - header: STARTUP
+    template: '{{- range .spec.containers -}}{{- if .startupProbe -}}yes {{- end -}}{{- end -}}'

@@ -1,0 +1,27 @@
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: STATUS
+    template: '{{- range .status.conditions -}}{{- if eq .type "Ready" -}}{{ if eq .status "True" }}Ready{{ else }}NotReady{{ end }}{{- end -}}{{- end -}}'
+  - header: ROLES
+    template: '{{- $roles := "" -}}{{- range $k, $v := .metadata.labels -}}{{- if hasPrefix $k "node-role.kubernetes.io/" -}}{{- $roles = printf "%s%s " $roles (trimPrefix "node-role.kubernetes.io/" $k) -}}{{- end -}}{{- end -}}{{ if $roles }}{{ $roles }}{{ else }}<none>{{ end }}'
+  - header: VERSION
+    fieldSpec: .status.nodeInfo.kubeletVersion
+  - header: INTERNAL_IP
+    template: '{{- range .status.addresses -}}{{- if eq .type "InternalIP" -}}{{ .address }}{{- end -}}{{- end -}}'
+  - header: OS
+    fieldSpec: .status.nodeInfo.osImage
+  - header: KERNEL
+    fieldSpec: .status.nodeInfo.kernelVersion
+  - header: RUNTIME
+    fieldSpec: .status.nodeInfo.containerRuntimeVersion
+  - header: CPU
+    fieldSpec: .status.allocatable.cpu
+  - header: MEM
+    fieldSpec: .status.allocatable.memory
+  - header: PODS
+    fieldSpec: .status.allocatable.pods
+  - header: SCHEDULABLE
+    template: '{{ if .spec.unschedulable }}No{{ else }}Yes{{ end }}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

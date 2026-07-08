@@ -1,0 +1,21 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: REFERENCE
+    template: '{{ .spec.scaleTargetRef.kind }}/{{ .spec.scaleTargetRef.name }}'
+  - header: METRICS
+    template: '{{- range $i, $m := .spec.metrics -}}{{- if $i -}},{{- end -}}{{ $m.type }}{{- if $m.resource -}}:{{ $m.resource.name }}{{- end -}}{{- end -}}'
+  - header: TARGETS
+    template: '{{- range $i, $m := .status.currentMetrics -}}{{- if $i -}},{{- end -}}{{- if $m.resource -}}{{ $m.resource.current.averageUtilization | default "-" }}%{{- end -}}{{- end -}}'
+  - header: MIN
+    fieldSpec: .spec.minReplicas
+  - header: MAX
+    fieldSpec: .spec.maxReplicas
+  - header: CURRENT
+    fieldSpec: .status.currentReplicas
+  - header: DESIRED
+    fieldSpec: .status.desiredReplicas
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

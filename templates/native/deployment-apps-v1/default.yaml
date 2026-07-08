@@ -1,0 +1,19 @@
+columns:
+  - header: NAMESPACE
+    fieldSpec: .metadata.namespace
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: READY
+    template: '{{ .status.readyReplicas | default 0 }}/{{ .spec.replicas | default 0 }}'
+  - header: UP-TO-DATE
+    fieldSpec: .status.updatedReplicas
+  - header: AVAILABLE
+    fieldSpec: .status.availableReplicas
+  - header: STRATEGY
+    fieldSpec: .spec.strategy.type
+  - header: IMAGE
+    template: '{{- range $i, $c := .spec.template.spec.containers -}}{{- if $i -}},{{- end -}}{{ $c.image }}{{- end -}}'
+  - header: PROGRESS
+    template: '{{- range .status.conditions -}}{{- if eq .type "Progressing" -}}{{ .reason }}{{- end -}}{{- end -}}'
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp
