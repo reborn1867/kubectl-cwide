@@ -10,7 +10,6 @@ import (
 	configmapCmd "github.com/kubectl-cwide/pkg/cmd/configmap"
 	"github.com/kubectl-cwide/pkg/cmd/get"
 	"github.com/kubectl-cwide/pkg/cmd/initialization"
-	"github.com/kubectl-cwide/pkg/cmd/list"
 	"github.com/kubectl-cwide/pkg/cmd/marketplace"
 	"github.com/kubectl-cwide/pkg/cmd/template"
 	"github.com/kubectl-cwide/pkg/cmd/tree"
@@ -44,7 +43,6 @@ display resources using those templates.`,
 	cmd.AddCommand(marketplace.NewCmdMarketplace())
 	cmd.AddCommand(configmapCmd.NewCmdConfigMap())
 	cmd.AddCommand(tree.NewCmdTree(streams))
-	cmd.AddCommand(list.NewCmdList(streams))
 	cmd.AddCommand(alias.NewCmdAlias())
 
 	return cmd

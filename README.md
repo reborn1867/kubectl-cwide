@@ -17,7 +17,6 @@ Managing Kubernetes resources often requires printing extra columns for specific
 - **Community Marketplace**: Browse and install community-shared templates from GitHub with `marketplace list`, `search`, and `install`.
 - **Built-in Template Functions**: Use specialized functions like `probeCheck` to perform live health checks on pod probe endpoints directly in your templates.
 - **Resource Tree View**: Visualize relationships between Kubernetes resources (owner references, label selectors, field references) with the `tree` command.
-- **API Resource Discovery**: List all available API resources in the cluster with `list all`, filtered by namespaced or cluster-scoped.
 - **Custom Resource Aliases**: Define short aliases for long resource type names (e.g. `vw` for `validatingwebhookconfigurations`) with automatic resolution in `get` and `tree` commands.
 
 ## Installation
@@ -412,30 +411,6 @@ Binding types:
 | `ownerRef` | Child resources whose ownerReferences point to the parent |
 | `labelSelector` | Resources matched by the parent's label selector (bidirectional) |
 | `fieldRef` | Resources referenced by name in a parent's field (via JSONPath) |
-
-### List API Resources
-
-Discover all API resource types available in the cluster, similar to `kubectl api-resources`.
-
-```sh
-# List namespaced resources (default)
-kubectl cwide list all
-
-# List cluster-scoped (non-namespaced) resources
-kubectl cwide list all -A
-
-# Without headers
-kubectl cwide list all --no-headers
-```
-
-Example output:
-```
-NAME           SHORTNAMES   APIVERSION   NAMESPACED   KIND
-configmaps     cm           v1           true         ConfigMap
-deployments    deploy       apps/v1      true         Deployment
-pods           po           v1           true         Pod
-services       svc          v1           true         Service
-```
 
 ### Resource Aliases
 
