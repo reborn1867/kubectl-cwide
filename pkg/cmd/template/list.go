@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
 )
@@ -58,6 +59,7 @@ directory. Duplicates (same name, different extension) are shown once.`,
 	}
 
 	templateCMD.Flags().StringP("resource", "r", "", "Resource type to list templates for (e.g. pod, deployment)")
+	_ = templateCMD.RegisterFlagCompletionFunc("resource", completions.ResourceTypes)
 	templateCMD.MarkFlagRequired("resource")
 
 	return templateCMD

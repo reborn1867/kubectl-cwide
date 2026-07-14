@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/kubectl-cwide/pkg/clients"
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
@@ -82,6 +83,13 @@ Binding types:
   # Mixed: rules file + extra inline relation
   kubectl cwide tree deployment/nginx -f deploy-stack.yaml --related=hpa:ownerRef`,
 		Args: cobra.ExactArgs(1),
+		ValidArgsFunction: func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+			// Only complete when the user hasn't typed the "/" separator yet.
+			if strings.Contains(toComplete, "/") {
+				return nil, cobra.ShellCompDirectiveNoFileComp
+			}
+			return completions.ResourceTypes(cmd, args, toComplete)
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := o.Complete(cmd, args); err != nil {
 				return err
@@ -97,6 +105,7 @@ Binding types:
 	cmd.Flags().StringArrayVar(&o.RelatedFlags, "related", nil, "Inline relationship: <resource>:<bindType>[:<parent>] (repeatable)")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "Namespace scope for this request")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use")
+	_ = cmd.RegisterFlagCompletionFunc("context", completions.KubeContexts)
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", false, "List across all namespaces")
 	cmd.Flags().IntVar(&o.MaxDepth, "max-depth", 0, "Maximum tree depth to render; 0 means unbounded. Cycles are always broken with a (cycle) marker.")
 	cmd.Flags().BoolVar(&o.Reverse, "reverse", false, "Show ancestors (via ownerReferences) instead of descendants.")
