@@ -300,9 +300,15 @@ func SaveConfig(config *models.Config) error {
 	return os.WriteFile(configPath, data, 0644)
 }
 
-// ResolveAlias replaces the first argument (resource type) with its alias target
-// if a matching alias exists in the config. Returns the args unchanged if no alias
-// matches or if the config cannot be loaded.
+// ResolveAlias rewrites the resource-type token in the first argument to
+// its configured target. Handles both kubectl arg forms:
+//
+//   ["pd"]                    → ["pods"]                    (bare TYPE)
+//   ["pd", "my-pod"]          → ["pods", "my-pod"]          (TYPE NAME)
+//   ["pd/my-pod"]             → ["pods/my-pod"]             (TYPE/NAME)
+//
+// Returns the args unchanged if no alias matches or if the config cannot
+// be loaded.
 func ResolveAlias(args []string) []string {
 	if len(args) == 0 {
 		return args
@@ -313,26 +319,39 @@ func ResolveAlias(args []string) []string {
 		return args
 	}
 
-	if target, ok := config.Aliases[args[0]]; ok {
-		result := make([]string, len(args))
-		copy(result, args)
-		result[0] = target
-		return result
-	}
+	result := make([]string, len(args))
+	copy(result, args)
 
-	return args
+	// Split on the first "/" so "rr/foo" resolves "rr" without losing "/foo".
+	head, rest, hasSlash := strings.Cut(args[0], "/")
+	target, ok := config.Aliases[head]
+	if !ok {
+		return args
+	}
+	if hasSlash {
+		result[0] = target + "/" + rest
+	} else {
+		result[0] = target
+	}
+	return result
 }
 
-// ResolveAliasString resolves a single resource name through the alias map.
-// Returns the original name if no alias matches or config cannot be loaded.
+// ResolveAliasString resolves a single resource-type token through the alias
+// map. Accepts both bare "TYPE" and "TYPE/NAME" forms; the "/NAME" suffix is
+// preserved. Returns the input unchanged if no alias matches.
 func ResolveAliasString(name string) string {
 	config, err := LoadConfig()
 	if err != nil || len(config.Aliases) == 0 {
 		return name
 	}
 
-	if target, ok := config.Aliases[name]; ok {
-		return target
+	head, rest, hasSlash := strings.Cut(name, "/")
+	target, ok := config.Aliases[head]
+	if !ok {
+		return name
 	}
-	return name
+	if hasSlash {
+		return target + "/" + rest
+	}
+	return target
 }
