@@ -93,12 +93,21 @@ echo "  Binary: ${BINARY}"
 # Isolate the config directory so alias tests don't pollute the caller's real
 # ~/.kubectl-cwide, and seed a minimal config so alias/list/set commands can
 # load without running 'init' against the cluster.
+#
+# Preserve KUBECONFIG explicitly BEFORE overriding HOME — kubectl and the
+# cwide factory both fall back to $HOME/.kube/config when KUBECONFIG is unset,
+# and this script needs to keep talking to whatever cluster the caller (CI
+# runner or local dev) configured.
+if [[ -z "${KUBECONFIG:-}" ]]; then
+  export KUBECONFIG="${HOME}/.kube/config"
+fi
 export HOME="${TMPDIR_E2E}/home"
 mkdir -p "${HOME}/.kubectl-cwide"
 cat > "${HOME}/.kubectl-cwide/config.yaml" <<CFG
 templatePath: ${TPL_DIR}
 CFG
 echo "  Isolated HOME: ${HOME}"
+echo "  KUBECONFIG:    ${KUBECONFIG}"
 
 header "Cluster setup"
 
