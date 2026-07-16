@@ -17,7 +17,7 @@ Managing Kubernetes resources often requires printing extra columns for specific
 - **Community Marketplace**: Browse and install community-shared templates from GitHub with `marketplace list`, `search`, and `install`.
 - **Built-in Template Functions**: Use specialized functions like `probeCheck` to perform live health checks on pod probe endpoints directly in your templates.
 - **Resource Tree View**: Visualize relationships between Kubernetes resources (owner references, label selectors, field references) with the `tree` command — including ancestor walks (`--reverse`), bounded depth, and automatic cycle detection.
-- **Custom Resource Aliases**: Define short aliases for long resource type names (e.g. `vw` for `validatingwebhookconfigurations`) with automatic resolution in `get` and `tree` commands. Alias groups (`pod,svc,cm`) and cluster-scoped sync via ConfigMap are supported.
+- **Custom Resource Aliases**: Define short aliases for long resource type names (e.g. `vw` for `validatingwebhookconfigurations`) with automatic resolution across `get`, `tree`, and passthrough verbs (`annotate`, `edit`, `label`, `delete`, `describe`, `apply`, `logs`, `exec`, `port-forward`, `scale`, `rollout`). Alias groups (`pod,svc,cm`) and cluster-scoped sync via ConfigMap are supported.
 - **Structured & filtered output**: Project columns (`-c`), sort rows (`--sort-by`), filter with regex (`--filter`), and emit `-o json|yaml|csv`.
 - **Template authoring tools**: `template lint` validates JSONPath and shape; `template scaffold` produces a starter file; `_shared/*.tpl` helpers are auto-included across every template.
 - **Marketplace pinning**: `marketplace install --ref <sha|tag>` records the version in `~/.kubectl-cwide/marketplace.lock`.
@@ -517,22 +517,37 @@ kubectl cwide get pod -c NAME,STATUS,AGE
 
 Column names are case-insensitive and matched against the header text emitted by the template. If a name doesn't match, the command errors out and lists the available headers.
 
-#### `-o/--output` — structured output
+#### `-o/--output` — native and template-driven output
 
-Get JSON, YAML, or CSV of the rendered rows for piping into other tools.
+Two families of output formats:
+
+**Native formats** dump the raw resource object, exactly like `kubectl get`:
 
 ```sh
-# JSON, one object per row keyed by header
-kubectl cwide get pod -o json | jq '.[] | select(.STATUS != "Running")'
-
-# YAML — same shape as JSON, easier for humans to skim
-kubectl cwide get deploy -o yaml
-
-# CSV — feed into spreadsheets or awk
-kubectl cwide get pod -o csv > pods.csv
+kubectl cwide get pd my-pod -o yaml           # (pd = alias for pods)
+kubectl cwide get deploy -o json
+kubectl cwide get pod -o name
+kubectl cwide get pod -o wide
+kubectl cwide get pod -o jsonpath='{.items[*].metadata.name}'
+kubectl cwide get pod -o go-template='{{range .items}}{{.metadata.name}}{{"\n"}}{{end}}'
 ```
 
-The JSON/YAML output is a flat array of `{HEADER: value, …}` maps. Multi-line cells are preserved as strings with embedded newlines.
+Aliases work transparently — `cwide get pd -o yaml` prints Pod manifests.
+
+**Template-driven formats** render your custom columns and emit them as records:
+
+```sh
+# CSV — feed into spreadsheets or awk
+kubectl cwide get pod -o csv > pods.csv
+
+# JSON of rendered template rows: one object per row keyed by header
+kubectl cwide get pod -o template-json | jq '.[] | select(.STATUS != "Running")'
+
+# YAML equivalent
+kubectl cwide get deploy -o template-yaml
+```
+
+`template-json`/`template-yaml` output is a flat array of `{HEADER: value, …}` maps. Multi-line cells preserve embedded newlines.
 
 #### `--sort-by` — sort rendered rows
 
@@ -716,6 +731,27 @@ kubectl cwide template scaffold pod > ~/.kubectl-cwide/templates/pod--v1/starter
 ```
 
 The scaffold emits three uncommented columns (NAMESPACE, NAME, AGE) plus a set of commented-out common columns you can flip on.
+
+### Passthrough verbs — aliases across the full kubectl surface
+
+cwide hosts thin passthrough subcommands for the most common kubectl verbs that operate on resources. They resolve any alias in the resource-type token and delegate to `kubectl` for the actual work — so a single `alias set pd pods` covers all of these:
+
+```sh
+kubectl cwide annotate pd my-pod owner=alice
+kubectl cwide label pd my-pod env=prod
+kubectl cwide edit pd my-pod
+kubectl cwide delete pd my-pod
+kubectl cwide describe pd my-pod
+kubectl cwide logs pd/my-pod
+kubectl cwide exec pd/my-pod -- ls /
+kubectl cwide port-forward pd/my-pod 8080:80
+kubectl cwide scale deploy my-app --replicas=3
+kubectl cwide rollout status deploy/my-app
+```
+
+Both `TYPE NAME` and `TYPE/NAME` forms are supported. All flags after the resource token pass through verbatim, so anything kubectl accepts (`--grace-period`, `--force`, `--overwrite`, etc.) works. `kubectl` must be on `$PATH`.
+
+The passthrough is intentionally minimal — cwide isn't reimplementing kubectl's verbs, just making aliases work everywhere.
 
 ### Alias groups and cluster-scoped sync
 

@@ -231,6 +231,14 @@ func (o *GetOptions) list() error {
 		return err
 	}
 
+	// Native output formats (yaml, json, name, jsonpath=...) dump the raw
+	// resource object like `kubectl get`. Template-based formats (csv,
+	// template-yaml, template-json) render the column template and emit
+	// each row as a record. Everything else falls through to the standard
+	// tabwriter table.
+	if isNativeOutput(o.Output) {
+		return o.emitNative(infos)
+	}
 	if o.Output != "" || o.SortColumn != "" || len(o.FilterExprs) > 0 {
 		return o.emitStructured(printer, infos)
 	}
@@ -469,8 +477,12 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Name of the column template to use (without extension).")
 	_ = cmd.RegisterFlagCompletionFunc("template", completions.TemplateNames)
 	cmd.Flags().StringSliceVarP(&o.Columns, "columns", "c", nil, "Comma-separated list of column headers to display (subset of the template's columns, case-insensitive).")
-	cmd.Flags().StringVarP(&o.Output, "output", "o", "", "Output format. One of: json, yaml, csv. If empty, prints the standard table.")
-	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions([]string{"json", "yaml", "csv"}, cobra.ShellCompDirectiveNoFileComp))
+	cmd.Flags().StringVarP(&o.Output, "output", "o", "",
+		"Output format. Native (raw resource, like kubectl): yaml, json, name, wide, jsonpath=..., go-template=... "+
+			"Template-driven (rendered columns as records): csv, template-yaml, template-json. If empty, prints the standard table.")
+	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions(
+		[]string{"yaml", "json", "name", "wide", "csv", "template-yaml", "template-json", "jsonpath=", "go-template="},
+		cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().StringVar(&o.SortColumn, "sort-by", "", "Column header to sort rows by (case-insensitive). Numeric strings sort numerically.")
 	cmd.Flags().StringArrayVar(&o.FilterExprs, "filter", nil, "Filter rows by column values: COL=val, COL!=val, COL~regex, COL!~regex (repeatable, ANDed).")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")

@@ -15,15 +15,18 @@ import (
 	"k8s.io/cli-runtime/pkg/printers"
 )
 
-// renderRows emits the collected rows in the requested format.
+// renderRows emits the collected rows in the requested format. Note that
+// "yaml" and "json" are intercepted upstream by emitNative and never reach
+// this function; the "template-yaml"/"template-json" values below dump the
+// rendered template columns as records rather than the raw resource.
 func renderRows(out io.Writer, format string, headers []string, rows [][]string) error {
 	switch strings.ToLower(format) {
-	case "json":
+	case "template-json":
 		objs := rowsAsObjects(headers, rows)
 		enc := json.NewEncoder(out)
 		enc.SetIndent("", "  ")
 		return enc.Encode(objs)
-	case "yaml":
+	case "template-yaml":
 		objs := rowsAsObjects(headers, rows)
 		data, err := yaml.Marshal(objs)
 		if err != nil {
@@ -62,7 +65,7 @@ func renderRows(out io.Writer, format string, headers []string, rows [][]string)
 		}
 		return nil
 	default:
-		return fmt.Errorf("unsupported output format %q (expected json, yaml, csv, or table)", format)
+		return fmt.Errorf("unsupported output format %q (expected csv, template-json, template-yaml, or table)", format)
 	}
 }
 
