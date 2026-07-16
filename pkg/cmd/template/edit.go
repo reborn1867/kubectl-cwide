@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
 )
@@ -101,7 +102,9 @@ template name.`,
 	}
 
 	editCMD.Flags().StringP("resource", "r", "", "Resource type to edit the template for (e.g. pod, deployment)")
+	_ = editCMD.RegisterFlagCompletionFunc("resource", completions.ResourceTypes)
 	editCMD.Flags().StringP("template", "t", "default", "Name of the template to edit (without extension)")
+	_ = editCMD.RegisterFlagCompletionFunc("template", completions.TemplateNames)
 	editCMD.MarkFlagRequired("resource")
 
 	return editCMD

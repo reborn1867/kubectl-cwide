@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/kubectl-cwide/pkg/clients"
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -447,8 +448,9 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 
   # List across all namespaces
   kubectl cwide get pods -A`,
-		Args: cobra.MinimumNArgs(1),
-		RunE: o.Run,
+		Args:              cobra.MinimumNArgs(1),
+		ValidArgsFunction: completions.ResourceTypes,
+		RunE:              o.Run,
 	}
 
 	cmd.AddCommand(NewCmdGetAllResources(streams))
@@ -465,12 +467,15 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 	cmdutil.AddSubresourceFlags(cmd, &o.Subresource, "If specified, gets the subresource of the requested object.")
 
 	cmd.Flags().StringVarP(&o.Template, "template", "t", "default", "Name of the column template to use (without extension).")
+	_ = cmd.RegisterFlagCompletionFunc("template", completions.TemplateNames)
 	cmd.Flags().StringSliceVarP(&o.Columns, "columns", "c", nil, "Comma-separated list of column headers to display (subset of the template's columns, case-insensitive).")
 	cmd.Flags().StringVarP(&o.Output, "output", "o", "", "Output format. One of: json, yaml, csv. If empty, prints the standard table.")
+	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions([]string{"json", "yaml", "csv"}, cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().StringVar(&o.SortColumn, "sort-by", "", "Column header to sort rows by (case-insensitive). Numeric strings sort numerically.")
 	cmd.Flags().StringArrayVar(&o.FilterExprs, "filter", nil, "Filter rows by column values: COL=val, COL!=val, COL~regex, COL!~regex (repeatable, ANDed).")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
+	_ = cmd.RegisterFlagCompletionFunc("context", completions.KubeContexts)
 	cmd.Flags().BoolVar(&o.EnableCustomTable, "ctable", false, "Enable custom table output with borders.")
 	return cmd
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
@@ -74,6 +75,7 @@ Edit the generated file to add more columns.`,
 
 	createCMD.Flags().StringP("name", "n", "", "Name for the new template (without extension)")
 	createCMD.Flags().StringP("resource", "r", "", "Resource type to create the template for (e.g. pod, deployment)")
+	_ = createCMD.RegisterFlagCompletionFunc("resource", completions.ResourceTypes)
 	createCMD.MarkFlagRequired("resource")
 	createCMD.MarkFlagRequired("name")
 

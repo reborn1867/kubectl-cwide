@@ -785,7 +785,18 @@ kubectl cwide completion fish > ~/.config/fish/completions/kubectl-cwide.fish
 kubectl cwide completion powershell > kubectl-cwide.ps1
 ```
 
-Completes commands, subcommands, flags, and dynamic argument values (resource types, template names, alias names) where applicable.
+Completes commands, subcommands, flags, and **dynamic argument values**:
+
+- `kubectl cwide get <TAB>` — cluster's resource types + short names + user aliases
+- `kubectl cwide tree <TAB>` — same, before the `/` separator
+- `kubectl cwide alias delete <TAB>` — currently-configured alias names
+- `--template=<TAB>` — template names discovered from the template root
+- `--context=<TAB>` — kubeconfig contexts
+- `-o <TAB>` — `json`, `yaml`, `csv`
+- `template list -r <TAB>`, `template edit -r <TAB>`, `template scaffold <TAB>` — resource types
+- `template edit -t <TAB>` — templates that exist for the specified resource
+
+Dynamic completions are best-effort — if the cluster is unreachable, they return no suggestions rather than a visible error.
 
 ### Color and Ctrl-C
 

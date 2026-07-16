@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/spf13/cobra"
 )
 
@@ -22,7 +23,8 @@ This is intended as a "first draft" — cwide's 'init' auto-generates a more
 complete template by inspecting the CRD schema.`,
 		Example: `  # Pipe to a template file
   kubectl cwide template scaffold pod > ~/.kubectl-cwide/templates/pod--v1/starter.yaml`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completions.ResourceTypes,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := scaffoldFor(args[0])
 			_, err := fmt.Fprint(cmd.OutOrStdout(), body)

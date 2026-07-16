@@ -3,6 +3,7 @@ package alias
 import (
 	"fmt"
 
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
 )
@@ -15,7 +16,8 @@ func NewCmdAliasDelete() *cobra.Command {
 		Short:      "Delete a resource type alias",
 		Example: `  # Delete the 'pd' alias
   kubectl cwide alias delete pd`,
-		Args: cobra.ExactArgs(1),
+		Args:              cobra.ExactArgs(1),
+		ValidArgsFunction: completions.AliasNames,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			alias := args[0]
 
