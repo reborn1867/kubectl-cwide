@@ -44,17 +44,20 @@ fail() {
 
 assert_contains() {
   local output="$1" expected="$2" name="$3"
-  if echo "${output}" | grep -qF "${expected}"; then
+  # Use here-string + grep -c (no early exit) to avoid SIGPIPE on the
+  # producer side when the captured output is very large.
+  if [[ "${output}" == *"${expected}"* ]]; then
     pass "${name}"
   else
     fail "${name} (expected '${expected}' in output)"
-    echo "    output: ${output}" | head -5
+    printf '    output (first 5 lines):\n'
+    printf '%s\n' "${output}" | sed -n '1,5p'
   fi
 }
 
 assert_not_contains() {
   local output="$1" unexpected="$2" name="$3"
-  if echo "${output}" | grep -qF "${unexpected}"; then
+  if [[ "${output}" == *"${unexpected}"* ]]; then
     fail "${name} (unexpected '${unexpected}' in output)"
   else
     pass "${name}"
@@ -86,6 +89,25 @@ header "Build"
 cd "${REPO_ROOT}"
 go build -o "${BINARY}" ./cmd/
 echo "  Binary: ${BINARY}"
+
+# Isolate the config directory so alias tests don't pollute the caller's real
+# ~/.kubectl-cwide, and seed a minimal config so alias/list/set commands can
+# load without running 'init' against the cluster.
+#
+# Preserve KUBECONFIG explicitly BEFORE overriding HOME — kubectl and the
+# cwide factory both fall back to $HOME/.kube/config when KUBECONFIG is unset,
+# and this script needs to keep talking to whatever cluster the caller (CI
+# runner or local dev) configured.
+if [[ -z "${KUBECONFIG:-}" ]]; then
+  export KUBECONFIG="${HOME}/.kube/config"
+fi
+export HOME="${TMPDIR_E2E}/home"
+mkdir -p "${HOME}/.kubectl-cwide"
+cat > "${HOME}/.kubectl-cwide/config.yaml" <<CFG
+templatePath: ${TPL_DIR}
+CFG
+echo "  Isolated HOME: ${HOME}"
+echo "  KUBECONFIG:    ${KUBECONFIG}"
 
 header "Cluster setup"
 
@@ -171,7 +193,7 @@ assert_contains "${out}" "get" "geet suggests get"
 out=$("${BINARY}" fetch 2>&1 || true)
 assert_contains "${out}" "get" "fetch suggests get (via SuggestFor)"
 
-for alias_cmd in g cm mp tpl cfg t ls al; do
+for alias_cmd in g cm mp tpl cfg t al; do
   out=$("${BINARY}" "${alias_cmd}" --help 2>&1 || true)
   assert_not_contains "${out}" "unknown command" "alias '${alias_cmd}' resolves"
 done
@@ -303,34 +325,29 @@ assert_contains "${out}" "skipped" "sync priority: existing files skipped"
 assert_contains "${out}" "Synced 0" "sync priority: 0 synced (local wins)"
 
 # =========================================================================
-# Test 5: List all API resources
+# Test 5: get all-resources — cluster-wide parallel listing
 # =========================================================================
 
-header "Test 5: List all API resources"
+header "Test 5: get all-resources"
 
-# 5a: Default (namespaced resources)
-out=$("${BINARY}" list all 2>&1)
-assert_contains "${out}" "NAME" "list all: header present"
-assert_contains "${out}" "SHORTNAMES" "list all: SHORTNAMES header"
-assert_contains "${out}" "APIVERSION" "list all: APIVERSION header"
-assert_contains "${out}" "NAMESPACED" "list all: NAMESPACED header"
-assert_contains "${out}" "KIND" "list all: KIND header"
-assert_contains "${out}" "pods" "list all: pods listed (namespaced)"
-assert_contains "${out}" "deployments" "list all: deployments listed (namespaced)"
+# 5a: Namespaced default in the test namespace
+out=$("${BINARY}" get all-resources -n "${NAMESPACE}" 2>&1)
+assert_contains "${out}" "APIVERSION" "get all-resources: APIVERSION header"
+assert_contains "${out}" "KIND" "get all-resources: KIND header"
+assert_contains "${out}" "nginx-e2e" "get all-resources: fixture pods listed"
 
-# 5b: Cluster-scoped resources (-A flag)
-out=$("${BINARY}" list all -A 2>&1)
-assert_contains "${out}" "nodes" "list all -A: nodes listed (cluster-scoped)"
-assert_contains "${out}" "namespaces" "list all -A: namespaces listed (cluster-scoped)"
+# 5b: All namespaces (-A) surfaces cluster-scoped types too
+out=$("${BINARY}" get all-resources -A 2>&1)
+assert_contains "${out}" "Node" "get all-resources -A: Node kind present"
+assert_contains "${out}" "Namespace" "get all-resources -A: Namespace kind present"
 
-# 5c: No-headers flag
-out=$("${BINARY}" list all --no-headers 2>&1)
-assert_not_contains "${out}" "SHORTNAMES" "list all --no-headers: no header row"
-assert_contains "${out}" "pods" "list all --no-headers: still shows data"
+# 5c: --no-headers
+out=$("${BINARY}" get all-resources -n "${NAMESPACE}" --no-headers 2>&1)
+assert_not_contains "${out}" "APIVERSION" "get all-resources --no-headers: no header row"
 
-# 5d: Alias 'ls' works
-out=$("${BINARY}" ls all 2>&1)
-assert_contains "${out}" "pods" "list alias 'ls': works"
+# 5d: Short alias 'ac'
+out=$("${BINARY}" get ac -n "${NAMESPACE}" 2>&1)
+assert_contains "${out}" "nginx-e2e" "get ac: alias works"
 
 # =========================================================================
 # Test 6: Resource aliases

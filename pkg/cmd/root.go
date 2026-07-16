@@ -13,6 +13,7 @@ import (
 	"github.com/kubectl-cwide/pkg/parser/funcs"
 	"github.com/kubectl-cwide/pkg/cmd/initialization"
 	"github.com/kubectl-cwide/pkg/cmd/marketplace"
+	"github.com/kubectl-cwide/pkg/cmd/passthrough"
 	"github.com/kubectl-cwide/pkg/cmd/template"
 	"github.com/kubectl-cwide/pkg/cmd/tree"
 )
@@ -53,6 +54,14 @@ display resources using those templates.`,
 	cmd.AddCommand(tree.NewCmdTree(streams))
 	cmd.AddCommand(alias.NewCmdAlias())
 	cmd.AddCommand(completion.NewCmdCompletion())
+
+	// Passthrough verbs (annotate/edit/label/delete/describe/apply/logs/exec/
+	// port-forward/scale/rollout): resolve aliases in the resource-type token
+	// and delegate to `kubectl`. Users get alias support across kubectl's full
+	// verb surface without cwide having to reimplement each one.
+	for _, c := range passthrough.NewCommands() {
+		cmd.AddCommand(c)
+	}
 
 	return cmd
 }

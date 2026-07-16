@@ -94,11 +94,13 @@ func TestRenderCSV(t *testing.T) {
 	}
 }
 
-func TestRenderJSON(t *testing.T) {
+func TestRenderTemplateJSON(t *testing.T) {
+	// Note: bare "json" is intercepted upstream by emitNative for raw
+	// resource output. The template-driven json format is "template-json".
 	var buf bytes.Buffer
-	err := renderRows(&buf, "json", []string{"NAME"}, [][]string{{"a"}, {"b"}})
+	err := renderRows(&buf, "template-json", []string{"NAME"}, [][]string{{"a"}, {"b"}})
 	if err != nil {
-		t.Fatalf("json render: %v", err)
+		t.Fatalf("template-json render: %v", err)
 	}
 	if !strings.Contains(buf.String(), `"NAME": "a"`) {
 		t.Fatalf("unexpected json: %q", buf.String())
