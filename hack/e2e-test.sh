@@ -44,17 +44,20 @@ fail() {
 
 assert_contains() {
   local output="$1" expected="$2" name="$3"
-  if echo "${output}" | grep -qF "${expected}"; then
+  # Use here-string + grep -c (no early exit) to avoid SIGPIPE on the
+  # producer side when the captured output is very large.
+  if [[ "${output}" == *"${expected}"* ]]; then
     pass "${name}"
   else
     fail "${name} (expected '${expected}' in output)"
-    echo "    output: ${output}" | head -5
+    printf '    output (first 5 lines):\n'
+    printf '%s\n' "${output}" | sed -n '1,5p'
   fi
 }
 
 assert_not_contains() {
   local output="$1" unexpected="$2" name="$3"
-  if echo "${output}" | grep -qF "${unexpected}"; then
+  if [[ "${output}" == *"${unexpected}"* ]]; then
     fail "${name} (unexpected '${unexpected}' in output)"
   else
     pass "${name}"
