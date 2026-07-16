@@ -90,6 +90,16 @@ cd "${REPO_ROOT}"
 go build -o "${BINARY}" ./cmd/
 echo "  Binary: ${BINARY}"
 
+# Isolate the config directory so alias tests don't pollute the caller's real
+# ~/.kubectl-cwide, and seed a minimal config so alias/list/set commands can
+# load without running 'init' against the cluster.
+export HOME="${TMPDIR_E2E}/home"
+mkdir -p "${HOME}/.kubectl-cwide"
+cat > "${HOME}/.kubectl-cwide/config.yaml" <<CFG
+templatePath: ${TPL_DIR}
+CFG
+echo "  Isolated HOME: ${HOME}"
+
 header "Cluster setup"
 
 # Verify cluster connectivity
