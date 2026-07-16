@@ -11,14 +11,13 @@ import (
 	"github.com/kubectl-cwide/pkg/models"
 )
 
-// withTempHome points UserHomeDir at a temp dir seeded with the given alias
-// map and returns a cleanup func. LoadConfig reads from $HOME/<common.ConfigPath>.
+// withTempHome points os.UserHomeDir at a temp dir seeded with the given
+// alias map and returns a cleanup func. LoadConfig reads from
+// os.UserHomeDir()/<common.ConfigPath>, which resolves via $HOME on Unix
+// and $USERPROFILE on Windows — we override both so tests are portable.
 func withTempHome(t *testing.T, aliases map[string]string) func() {
 	t.Helper()
 	dir := t.TempDir()
-	if err := os.MkdirAll(filepath.Join(dir, ".kubectl-cwide"), 0755); err != nil {
-		t.Fatal(err)
-	}
 	cfgPath := filepath.Join(dir, common.ConfigPath)
 	if err := os.MkdirAll(filepath.Dir(cfgPath), 0755); err != nil {
 		t.Fatal(err)
@@ -31,8 +30,13 @@ func withTempHome(t *testing.T, aliases map[string]string) func() {
 		t.Fatal(err)
 	}
 	oldHome := os.Getenv("HOME")
+	oldUserProfile := os.Getenv("USERPROFILE")
 	os.Setenv("HOME", dir)
-	return func() { os.Setenv("HOME", oldHome) }
+	os.Setenv("USERPROFILE", dir)
+	return func() {
+		os.Setenv("HOME", oldHome)
+		os.Setenv("USERPROFILE", oldUserProfile)
+	}
 }
 
 func TestResolveAlias_BareType(t *testing.T) {
