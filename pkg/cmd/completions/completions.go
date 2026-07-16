@@ -4,6 +4,7 @@
 package completions
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -18,8 +19,11 @@ import (
 )
 
 // ResourceTypes returns names + short names of every resource the cluster
-// advertises via discovery, plus every user-defined alias. Runs quietly (any
-// discovery error yields no completions rather than a visible failure).
+// advertises via discovery, plus every user-defined alias.
+//
+// Errors are swallowed by default so tab completion never disrupts the shell.
+// Set CWIDE_COMPLETE_DEBUG=1 to log each failure to stderr so users can
+// diagnose "TAB shows nothing" without touching the source.
 func ResourceTypes(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
 	// If the user has already typed a resource type, don't complete a second one.
 	if len(args) >= 1 {
@@ -44,12 +48,20 @@ func ResourceTypes(cmd *cobra.Command, args []string, toComplete string) ([]stri
 		for name := range cfg.Aliases {
 			add(name)
 		}
+	} else {
+		debugf("LoadConfig: %v", err)
 	}
 
 	// Cluster-served resources.
 	factory := clients.FactoryFromCmd(cmd, contextFromFlag(cmd))
-	if disc, err := factory.ToDiscoveryClient(); err == nil {
-		_, resourceLists, _ := disc.ServerGroupsAndResources()
+	disc, err := factory.ToDiscoveryClient()
+	if err != nil {
+		debugf("ToDiscoveryClient: %v", err)
+	} else {
+		_, resourceLists, err := disc.ServerGroupsAndResources()
+		if err != nil && !discovery.IsGroupDiscoveryFailedError(err) {
+			debugf("ServerGroupsAndResources: %v", err)
+		}
 		for _, list := range resourceLists {
 			for _, r := range list.APIResources {
 				if strings.Contains(r.Name, "/") {
@@ -61,12 +73,20 @@ func ResourceTypes(cmd *cobra.Command, args []string, toComplete string) ([]stri
 				}
 			}
 		}
-		// Discovery is best-effort; discovery.IsGroupDiscoveryFailedError is treated as "some results"
-		_ = discovery.IsGroupDiscoveryFailedError
 	}
 
 	sort.Strings(out)
 	return filterPrefix(out, toComplete), cobra.ShellCompDirectiveNoFileComp
+}
+
+// debugf writes to stderr when CWIDE_COMPLETE_DEBUG is set. Completion
+// callbacks run inside a shell hook, so this is the only channel the user
+// can observe. Cobra will still emit the completion payload separately.
+func debugf(format string, args ...interface{}) {
+	if os.Getenv("CWIDE_COMPLETE_DEBUG") == "" {
+		return
+	}
+	fmt.Fprintf(os.Stderr, "cwide-complete: "+format+"\n", args...)
 }
 
 // AliasNames completes with the names of currently-configured aliases.
