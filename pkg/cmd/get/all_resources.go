@@ -78,7 +78,7 @@ cluster's Discovery API, in parallel.
 By default only the current namespace is listed. Use -A to list across all
 namespaces (cluster-scoped resources are included when -A is set).
 
-The output is a single table sorted by APIVERSION, KIND, NAMESPACE, NAME.`,
+The output is a single table sorted by KIND, APIVERSION, NAMESPACE, NAME.`,
 		Example: `  # List every resource in the current namespace
   kubectl cwide get all-resources
 
@@ -164,13 +164,15 @@ func (o *AllResourcesOptions) Run(ctx context.Context) error {
 
 	hits, errs := o.fanOutList(ctx, dynClient, targets)
 
-	// Stable, human-friendly ordering.
+	// Stable, human-friendly ordering: KIND first so all objects of the same
+	// kind stay together in the output, then apiVersion (so v1beta1 Foo and
+	// v1 Foo group visually), namespace, name.
 	sort.Slice(hits, func(i, j int) bool {
-		if hits[i].APIVersion != hits[j].APIVersion {
-			return hits[i].APIVersion < hits[j].APIVersion
-		}
 		if hits[i].Kind != hits[j].Kind {
 			return hits[i].Kind < hits[j].Kind
+		}
+		if hits[i].APIVersion != hits[j].APIVersion {
+			return hits[i].APIVersion < hits[j].APIVersion
 		}
 		if hits[i].Namespace != hits[j].Namespace {
 			return hits[i].Namespace < hits[j].Namespace
@@ -183,17 +185,17 @@ func (o *AllResourcesOptions) Run(ctx context.Context) error {
 
 	if !o.NoHeaders {
 		if o.AllNamespaces {
-			fmt.Fprintln(w, "APIVERSION\tKIND\tNAMESPACE\tNAME\tAGE")
+			fmt.Fprintln(w, "KIND\tAPIVERSION\tNAMESPACE\tNAME\tAGE")
 		} else {
-			fmt.Fprintln(w, "APIVERSION\tKIND\tNAME\tAGE")
+			fmt.Fprintln(w, "KIND\tAPIVERSION\tNAME\tAGE")
 		}
 	}
 
 	for _, h := range hits {
 		if o.AllNamespaces {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", h.APIVersion, h.Kind, h.Namespace, h.Name, h.Age)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", h.Kind, h.APIVersion, h.Namespace, h.Name, h.Age)
 		} else {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", h.APIVersion, h.Kind, h.Name, h.Age)
+			fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", h.Kind, h.APIVersion, h.Name, h.Age)
 		}
 	}
 
