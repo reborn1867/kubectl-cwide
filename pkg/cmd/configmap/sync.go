@@ -89,7 +89,13 @@ Use --force to always overwrite regardless of priority.`,
 				}
 				parts := strings.SplitN(key, "..", 2)
 				if len(parts) != 2 {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Skipping invalid key %q (expected <resource-dir>..<template-name>)\n", key)
+					fmt.Fprintf(cmd.ErrOrStderr(),
+						"Skipping key %q — expected format <resource-dir>..<template-name> "+
+							"(e.g. pod--v1..debug). If you created this ConfigMap with "+
+							"'kubectl create configmap --from-file=pod-debug.yaml', "+
+							"either rename the file to 'pod--v1..debug.yaml' first, "+
+							"or use 'kubectl cwide configmap push -f <file> --key pod--v1..debug' instead.\n",
+						key)
 					continue
 				}
 
