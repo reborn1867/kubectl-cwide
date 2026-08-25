@@ -11,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"k8s.io/apimachinery/pkg/api/meta"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/clientcmd"
 
@@ -120,6 +122,17 @@ func TemplateNames(cmd *cobra.Command, args []string, toComplete string) ([]stri
 		resource = strings.ToLower(utils.ResolveAliasString(args[0]))
 	}
 
+	// Resolve the typed token (plural/singular/short name) to the Kind's directory
+	// prefix via the cluster's RESTMapper — the same resolution `kubectl get
+	// <resource>` performs. This handles short names (svc, deploy, po) and every
+	// irregular plural authoritatively. When the mapper is unavailable (e.g. no
+	// cluster reachable but local templates exist) dirPrefix stays empty and we
+	// fall back to the offline meta.UnsafeGuessKindToResource heuristic below.
+	dirPrefix := ""
+	if resource != "" {
+		dirPrefix = resolveKindDirPrefix(cmd, resource)
+	}
+
 	seen := map[string]struct{}{}
 	var out []string
 
@@ -134,12 +147,15 @@ func TemplateNames(cmd *cobra.Command, args []string, toComplete string) ([]stri
 		if e.Name() == "_shared" {
 			continue
 		}
-		if resource != "" && !strings.HasPrefix(strings.ToLower(e.Name()), resource+"-") &&
-			!strings.HasPrefix(strings.ToLower(e.Name()), resource+"s-") &&
-			strings.ToLower(e.Name()) != resource+"--v1" {
-			// Loose match — resource dirs are `<plural>-<group>-<version>`, so we
-			// accept anything that starts with the resource singular or plural.
-			continue
+		if resource != "" {
+			name := strings.ToLower(e.Name())
+			if dirPrefix != "" {
+				if !strings.HasPrefix(name, dirPrefix) {
+					continue
+				}
+			} else if !resourceMatchesDir(name, resource) {
+				continue
+			}
 		}
 		files, err := os.ReadDir(filepath.Join(rootPath, e.Name()))
 		if err != nil {
@@ -189,6 +205,53 @@ func contextFromFlag(cmd *cobra.Command) string {
 		return f.Value.String()
 	}
 	return ""
+}
+
+// resolveKindDirPrefix resolves a user-typed resource token (plural, singular, or
+// short name) to the lowercase "<kind>-<group>-" prefix of its template directory
+// (see utils.GenerateDirNameByGVK), using the cluster's RESTMapper the same way
+// `kubectl get <resource>` resolves its arguments. The version is intentionally
+// omitted from the prefix so templates for every served version of the Kind match.
+// Returns "" when the token can't be resolved (no cluster, unknown/ambiguous
+// resource); callers should then fall back to resourceMatchesDir.
+func resolveKindDirPrefix(cmd *cobra.Command, resource string) string {
+	factory := clients.FactoryFromCmd(cmd, contextFromFlag(cmd))
+	mapper, err := factory.ToRESTMapper()
+	if err != nil {
+		debugf("ToRESTMapper: %v", err)
+		return ""
+	}
+	gvk, err := mapper.KindFor(schema.GroupVersionResource{Resource: resource})
+	if err != nil {
+		debugf("KindFor(%q): %v", resource, err)
+		return ""
+	}
+	return strings.ToLower(gvk.Kind + "-" + gvk.Group + "-")
+}
+
+// resourceMatchesDir is the offline fallback for resolveKindDirPrefix. It reports
+// whether a template directory corresponds to the resource token the user typed.
+// Template dirs are named "<kind>-<group>-<version>" (all lowercase, see
+// utils.GenerateDirNameByGVK), and Kinds never contain a dash, so the first
+// "-"-delimited segment is the Kind.
+//
+// The typed token may be the singular Kind ("pod"), the singular resource, or the
+// plural resource ("pods"). Plural/singular forms are derived with
+// meta.UnsafeGuessKindToResource — the same heuristic Kubernetes' DefaultRESTMapper
+// uses — so we correctly handle regular ("pods"), -es ("ingresses"), -ies
+// ("networkpolicies") and unpluralized ("endpoints") names without hand-rolling
+// suffix rules. It cannot resolve short names (svc, po); those require the mapper.
+// dirName is expected to be lowercase.
+func resourceMatchesDir(dirName, resource string) bool {
+	kind := strings.SplitN(dirName, "-", 2)[0]
+	if kind == "" {
+		return false
+	}
+	if resource == kind {
+		return true
+	}
+	plural, singular := meta.UnsafeGuessKindToResource(schema.GroupVersionKind{Kind: kind})
+	return resource == plural.Resource || resource == singular.Resource
 }
 
 func filterPrefix(all []string, prefix string) []string {
