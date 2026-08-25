@@ -40,7 +40,7 @@ func (p *FieldParser) Parse(obj runtime.Object, defaultTable *metav1.Table) (str
 	if p.IsDefaultPrinterField {
 		if defaultTable != nil {
 			for idx, column := range defaultTable.ColumnDefinitions {
-				if strings.ToLower(column.Name) == strings.ToLower(p.Header) {
+				if normalizeHeader(column.Name) == normalizeHeader(p.Header) {
 					if len(defaultTable.Rows) > 0 {
 						result = fmt.Sprint(defaultTable.Rows[0].Cells[idx])
 						break
@@ -118,6 +118,18 @@ func GetFuncMap(cfg *rest.Config) template.FuncMap {
 
 func IsTemplate(template string) bool {
 	return strings.HasPrefix(template, "{{") && strings.HasSuffix(template, "}}")
+}
+
+// normalizeHeader canonicalizes a column header for matching a template header
+// against a built-in printer's column name. Template headers are generated with
+// spaces replaced by underscores (a multi-word printer column such as
+// "Nominated Node" becomes "NOMINATED_NODE") because the legacy .tpl format is
+// whitespace-delimited and cannot contain spaces in a header. Matching must undo
+// that encoding, so we treat spaces and underscores as equivalent and compare
+// case-insensitively. Built-in printer column names never contain underscores,
+// so this mapping is unambiguous.
+func normalizeHeader(s string) string {
+	return strings.ToLower(strings.ReplaceAll(s, " ", "_"))
 }
 
 // age calculates the age of a resource based on its creation time in RFC3339.
