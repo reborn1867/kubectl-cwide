@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kubectl-cwide/pkg/clients"
 	"github.com/kubectl-cwide/pkg/cmd/completions"
@@ -15,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/cli-runtime/pkg/printers"
@@ -226,19 +228,27 @@ func (o *GetOptions) list() error {
 		return nil
 	}
 
+	// Native output formats (yaml, json, name, jsonpath=...) dump the raw
+	// resource object like `kubectl get` and are agnostic to whether the
+	// caller asked for one kind or many, so short-circuit before the
+	// multi-kind branch.
+	if isNativeOutput(o.Output) {
+		return o.emitNative(infos)
+	}
+
+	// Multi-kind path: alias groups (e.g. `alias set core pod,svc,cm`) or
+	// explicit comma lists (`get pod,svc`) mean `infos` spans several GVKs.
+	// Each kind wants its own template, and users want to SEE the kind — so
+	// render one block per kind with KIND and AGE columns prepended.
+	if multipleGVKsRequested(infos) {
+		return o.listMultiKind(infos)
+	}
+
 	printer, err := o.createPrinter(infos)
 	if err != nil {
 		return err
 	}
 
-	// Native output formats (yaml, json, name, jsonpath=...) dump the raw
-	// resource object like `kubectl get`. Template-based formats (csv,
-	// template-yaml, template-json) render the column template and emit
-	// each row as a record. Everything else falls through to the standard
-	// tabwriter table.
-	if isNativeOutput(o.Output) {
-		return o.emitNative(infos)
-	}
 	if o.Output != "" || o.SortColumn != "" || len(o.FilterExprs) > 0 {
 		return o.emitStructured(printer, infos)
 	}
@@ -258,6 +268,151 @@ func (o *GetOptions) list() error {
 
 	return nil
 }
+
+// listMultiKind renders each kind's rows using its own template, with KIND
+// and AGE columns prepended so the user can distinguish rows across kinds.
+// Blocks are separated by a blank line, matching `kubectl get pod,svc`'s
+// visual convention.
+func (o *GetOptions) listMultiKind(infos []*resource.Info) error {
+	// Group by GVK, preserving discovery order so `alias set core pod,svc,cm`
+	// prints pods first, services second, configmaps third — matches the
+	// order the user typed.
+	type group struct {
+		gvk   string
+		infos []*resource.Info
+	}
+	byGVK := map[string]*group{}
+	var order []string
+	for _, info := range infos {
+		k := info.Object.GetObjectKind().GroupVersionKind().String()
+		if _, ok := byGVK[k]; !ok {
+			byGVK[k] = &group{gvk: k}
+			order = append(order, k)
+		}
+		byGVK[k].infos = append(byGVK[k].infos, info)
+	}
+
+	// Collect rendered rows per block. For structured output (json/yaml/csv,
+	// sort, filter) we concatenate all rows into one flat table under a
+	// unified KIND/NAMESPACE/NAME/AGE header — the per-kind template columns
+	// are dropped there because they don't share a header across kinds.
+	unifiedRows := [][]string{}
+	unifiedHeader := []string{"KIND", "NAMESPACE", "NAME", "AGE"}
+	if !o.AllNamespaces {
+		unifiedHeader = []string{"KIND", "NAME", "AGE"}
+	}
+
+	structured := o.Output != "" || o.SortColumn != "" || len(o.FilterExprs) > 0
+	tabw := printers.GetNewTabWriter(os.Stdout)
+
+	for i, k := range order {
+		g := byGVK[k]
+		kind := g.infos[0].Object.GetObjectKind().GroupVersionKind().Kind
+
+		if structured {
+			// Emit unified rows: KIND, [NAMESPACE], NAME, AGE only.
+			for _, info := range g.infos {
+				accessor, err := meta.Accessor(info.Object)
+				if err != nil {
+					continue
+				}
+				age := resourceAge(accessor.GetCreationTimestamp())
+				if o.AllNamespaces {
+					unifiedRows = append(unifiedRows, []string{kind, accessor.GetNamespace(), accessor.GetName(), age})
+				} else {
+					unifiedRows = append(unifiedRows, []string{kind, accessor.GetName(), age})
+				}
+			}
+			continue
+		}
+
+		// Per-kind block for the human table path.
+		printer, err := o.createPrinter(g.infos)
+		if err != nil {
+			return fmt.Errorf("build printer for %s: %w", kind, err)
+		}
+
+		// Capture the printer's rows so we can prepend KIND/AGE.
+		var rows [][]string
+		printer.RowSink = func(cols []string) {
+			rows = append(rows, append([]string(nil), cols...))
+		}
+		for _, info := range g.infos {
+			if err := printer.PrintObj(info.Object, io.Discard); err != nil {
+				return fmt.Errorf("render %s row: %w", kind, err)
+			}
+		}
+
+		// Block header: KIND \t <template headers> \t AGE
+		if i > 0 {
+			fmt.Fprintln(tabw)
+		}
+		if !o.NoHeaders {
+			headerCells := append([]string{"KIND"}, printer.Headers...)
+			if !containsHeader(printer.Headers, "AGE") {
+				headerCells = append(headerCells, "AGE")
+			}
+			fmt.Fprintln(tabw, strings.Join(headerCells, "\t"))
+		}
+
+		for ri, row := range rows {
+			ageCol := ""
+			if !containsHeader(printer.Headers, "AGE") {
+				if accessor, err := meta.Accessor(g.infos[ri].Object); err == nil {
+					ageCol = resourceAge(accessor.GetCreationTimestamp())
+				}
+			}
+			cells := append([]string{kind}, row...)
+			if ageCol != "" {
+				cells = append(cells, ageCol)
+			}
+			fmt.Fprintln(tabw, strings.Join(cells, "\t"))
+		}
+	}
+
+	if structured {
+		if len(o.FilterExprs) > 0 {
+			filtered, err := filterRows(unifiedHeader, unifiedRows, o.FilterExprs)
+			if err != nil {
+				return err
+			}
+			unifiedRows = filtered
+		}
+		if o.SortColumn != "" {
+			if err := sortRows(unifiedHeader, unifiedRows, o.SortColumn); err != nil {
+				return err
+			}
+		}
+		outFmt := o.Output
+		if outFmt == "" {
+			outFmt = "table"
+		}
+		return renderRows(o.Out, outFmt, unifiedHeader, unifiedRows)
+	}
+
+	return tabw.Flush()
+}
+
+// containsHeader reports whether the given headers list already includes a
+// case-insensitive match for name.
+func containsHeader(headers []string, name string) bool {
+	for _, h := range headers {
+		if strings.EqualFold(h, name) {
+			return true
+		}
+	}
+	return false
+}
+
+// resourceAge formats a creation timestamp as a compact human duration
+// (mirrors what the standard printers do for kubectl's AGE column).
+func resourceAge(ts metav1.Time) string {
+	if ts.IsZero() {
+		return ""
+	}
+	return duration.HumanDuration(time.Since(ts.Time))
+}
+
 
 func (o *GetOptions) emitStructured(printer *CustomColumnsPrinter, infos []*resource.Info) error {
 	var rows [][]string
