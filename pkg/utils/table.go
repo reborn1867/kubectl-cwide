@@ -1,18 +1,40 @@
 package utils
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
 
-	objectmeta "k8s.io/apiextensions-apiserver/pkg/apiserver/schema/objectmeta"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/kubernetes/pkg/api/legacyscheme"
 	printers "k8s.io/kubernetes/pkg/printers"
+
+	// Register internal API types and their versioned<->internal conversions
+	// on legacyscheme.Scheme. These are required so that the codec below can
+	// decode an unstructured object into the internal API type expected by
+	// the kubectl print handlers.
+	_ "k8s.io/kubernetes/pkg/apis/apps/install"
+	_ "k8s.io/kubernetes/pkg/apis/authentication/install"
+	_ "k8s.io/kubernetes/pkg/apis/authorization/install"
+	_ "k8s.io/kubernetes/pkg/apis/autoscaling/install"
+	_ "k8s.io/kubernetes/pkg/apis/batch/install"
+	_ "k8s.io/kubernetes/pkg/apis/certificates/install"
+	_ "k8s.io/kubernetes/pkg/apis/coordination/install"
+	_ "k8s.io/kubernetes/pkg/apis/core/install"
+	_ "k8s.io/kubernetes/pkg/apis/discovery/install"
+	_ "k8s.io/kubernetes/pkg/apis/events/install"
+	_ "k8s.io/kubernetes/pkg/apis/extensions/install"
+	_ "k8s.io/kubernetes/pkg/apis/policy/install"
+	_ "k8s.io/kubernetes/pkg/apis/rbac/install"
+	_ "k8s.io/kubernetes/pkg/apis/resource/install"
+	_ "k8s.io/kubernetes/pkg/apis/scheduling/install"
+	_ "k8s.io/kubernetes/pkg/apis/storage/install"
 )
 
 type handlerEntry struct {
@@ -75,21 +97,33 @@ func (h *DefaultTableGenerator) GenerateTable(obj runtime.Object, options printe
 		return nil, fmt.Errorf("no table handler registered for this kind %s", kind)
 	}
 
-	typed := reflect.New(handler.printFunc.Type().In(0).Elem())
-
-	objMetaResults := reflect.ValueOf(objectmeta.GetObjectMeta).Call([]reflect.Value{reflect.ValueOf(unstructuredObj.UnstructuredContent()), reflect.ValueOf(true)})
-	if !objMetaResults[2].IsNil() {
-		return nil, objMetaResults[2].Interface().(error)
+	// Decode the unstructured object into its internal API type via the
+	// legacy scheme's codec.
+	//
+	// We deliberately avoid runtime.DefaultUnstructuredConverter.FromUnstructured
+	// here. That converter maps struct fields by JSON tag, but k8s internal API
+	// types (e.g. k8s.io/kubernetes/pkg/apis/core.Pod) carry no JSON tags, so it
+	// falls back to lowercasing only the first letter of the Go field name. That
+	// corrupts acronym fields such as PodIP.IP ("IP" -> "iP" instead of "ip"),
+	// leaving them empty. As a result the built-in printers rendered affected
+	// columns as <none> (most visibly a pod's IP). Decoding through the scheme
+	// routes JSON -> versioned type (which has correct JSON tags) -> internal
+	// type via the generated conversions, preserving every field.
+	data, err := json.Marshal(unstructuredObj.UnstructuredContent())
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal object: %w", err)
 	}
 
-	convertResults := reflect.ValueOf(runtime.DefaultUnstructuredConverter.FromUnstructured).Call([]reflect.Value{reflect.ValueOf(unstructuredObj.UnstructuredContent()), typed})
-	if !convertResults[0].IsNil() {
-		return nil, convertResults[0].Interface().(error)
+	internalObj, err := runtime.Decode(legacyscheme.Codecs.UniversalDecoder(), data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode object into internal type: %w", err)
 	}
 
-	typed.Elem().FieldByName("ObjectMeta").Set(objMetaResults[0].Elem())
+	if expected := handler.printFunc.Type().In(0); reflect.TypeOf(internalObj) != expected {
+		return nil, fmt.Errorf("decoded object type %T does not match printer input type %s", internalObj, expected)
+	}
 
-	args := []reflect.Value{typed, reflect.ValueOf(options)}
+	args := []reflect.Value{reflect.ValueOf(internalObj), reflect.ValueOf(options)}
 	results := handler.printFunc.Call(args)
 	if !results[1].IsNil() {
 		return nil, results[1].Interface().(error)
