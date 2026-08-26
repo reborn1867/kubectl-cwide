@@ -345,9 +345,9 @@ assert_contains "${out}" "Namespace" "get all-resources -A: Namespace kind prese
 out=$("${BINARY}" get all-resources -n "${NAMESPACE}" --no-headers 2>&1)
 assert_not_contains "${out}" "APIVERSION" "get all-resources --no-headers: no header row"
 
-# 5d: Short alias 'ac'
-out=$("${BINARY}" get ac -n "${NAMESPACE}" 2>&1)
-assert_contains "${out}" "nginx-e2e" "get ac: alias works"
+# 5d: Short alias 'ar'
+out=$("${BINARY}" get ar -n "${NAMESPACE}" 2>&1)
+assert_contains "${out}" "nginx-e2e" "get ar: alias works"
 
 # =========================================================================
 # Test 6: Resource aliases
