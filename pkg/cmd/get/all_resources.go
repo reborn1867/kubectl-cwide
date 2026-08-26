@@ -70,7 +70,7 @@ func NewCmdGetAllResources(streams genericiooptions.IOStreams) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:     "all-resources",
-		Aliases: []string{"ac"},
+		Aliases: []string{"ar"},
 		Short:   "List every resource of every discovered API type",
 		Long: `List every object of every namespaced resource type discovered via the
 cluster's Discovery API, in parallel.
@@ -83,7 +83,7 @@ The output is a single table sorted by KIND, APIVERSION, NAMESPACE, NAME.`,
   kubectl cwide get all-resources
 
   # Short alias
-  kubectl cwide get ac
+  kubectl cwide get ar
 
   # Across all namespaces (includes cluster-scoped types)
   kubectl cwide get all-resources -A
