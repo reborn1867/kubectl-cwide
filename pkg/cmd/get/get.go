@@ -594,6 +594,15 @@ func (o *GetOptions) buildRequest() *resource.Result {
 // discovery down) is treated as "unknown, assume namespaced" — the caller
 // will still hit the standard error paths in the builder. Comma-separated
 // alias groups ("pod,svc") and TYPE/NAME forms ("mw/foo") are handled.
+//
+// Uses two resolution paths per token to match kubectl's behavior:
+//  1. ResourceFor — normalizes plurals/singulars/shortnames to a GVR
+//  2. KindFor as fallback — handles cases where ResourceFor errors on
+//     ambiguity but a preferred version is known
+// Either path yields a GroupVersionResource that we then RESTMapping to
+// obtain scope. This double-resolution is what fixes the case where
+// KindFor alone was returning an error on multi-version resources like
+// validatingwebhookconfigurations.
 func anyClusterScoped(factory cmdutil.Factory, args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -607,19 +616,41 @@ func anyClusterScoped(factory cmdutil.Factory, args []string) bool {
 		if head == "" {
 			continue
 		}
-		gvk, err := mapper.KindFor(schema.GroupVersionResource{Resource: head})
-		if err != nil {
-			continue
-		}
-		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
-		if err != nil {
-			continue
-		}
-		if mapping.Scope != nil && mapping.Scope.Name() == meta.RESTScopeNameRoot {
+		if resolveScopeRoot(mapper, head) {
 			return true
 		}
 	}
 	return false
+}
+
+// resolveScopeRoot returns true when the given user-typed resource token
+// resolves to a cluster-scoped Kind. It tries ResourceFor first (which is
+// the kubectl-blessed path for plurals/singulars/shortnames), then falls
+// back to KindFor for edge cases where ResourceFor rejects the input.
+func resolveScopeRoot(mapper meta.RESTMapper, head string) bool {
+	// Path 1: ResourceFor — the standard resolver kubectl's builder uses.
+	// Chain KindsFor on the resulting GVR to get a Kind for RESTMapping.
+	if gvr, err := mapper.ResourceFor(schema.GroupVersionResource{Resource: head}); err == nil {
+		if gvks, err := mapper.KindsFor(gvr); err == nil {
+			for _, gvk := range gvks {
+				if m, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version); err == nil {
+					if m.Scope != nil && m.Scope.Name() == meta.RESTScopeNameRoot {
+						return true
+					}
+				}
+			}
+		}
+	}
+	// Path 2: KindFor + RESTMapping fallback.
+	gvk, err := mapper.KindFor(schema.GroupVersionResource{Resource: head})
+	if err != nil {
+		return false
+	}
+	mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+	if err != nil {
+		return false
+	}
+	return mapping.Scope != nil && mapping.Scope.Name() == meta.RESTScopeNameRoot
 }
 
 // splitResourceTokens splits kubectl's "type1,type2" multi-type form.

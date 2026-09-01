@@ -403,6 +403,75 @@ assert_contains "${out}" "not found" "alias delete: error for missing alias"
 "${BINARY}" alias delete pd >/dev/null 2>&1 || true
 
 # =========================================================================
+# Test 7: Cluster-scoped resources — full-name, alias, and TYPE/NAME forms
+# =========================================================================
+#
+# Regression coverage for the bug where 'cwide get <cluster-scoped>' returned
+# zero rows because buildRequest scoped the LIST to the current namespace.
+# See https://github.com/reborn1867/kubectl-cwide/pull/27.
+#
+# The kind cluster always ships a set of ValidatingWebhookConfiguration /
+# MutatingWebhookConfiguration / ClusterRole objects, so we can assert
+# against non-empty output without provisioning fixtures.
+
+header "Test 7: Cluster-scoped resources"
+
+# Pre-seed minimal templates for the cluster-scoped Kinds this test hits.
+# The bug being tested happens in buildRequest (before the printer runs),
+# so a bare NAME column is sufficient to prove the fix.
+for dir in \
+  validatingwebhookconfiguration-admissionregistration.k8s.io-v1 \
+  mutatingwebhookconfiguration-admissionregistration.k8s.io-v1 \
+  clusterrole-rbac.authorization.k8s.io-v1
+do
+  mkdir -p "${TPL_DIR}/${dir}"
+  cat > "${TPL_DIR}/${dir}/default.yaml" <<'TMPL'
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+TMPL
+done
+
+# The primary regression test is against ClusterRole because kind clusters
+# always have RBAC bootstrap roles (cluster-admin, system:*, etc.), so we can
+# assert on actual object names — not just the header row that prints even
+# for zero results. ValidatingWebhookConfiguration / MutatingWebhookConfiguration
+# are also covered but their coverage depends on what's installed in kind.
+
+# 7a: Primary regression — cluster-scoped ClusterRole must return non-empty rows.
+# kind always ships 'cluster-admin' as a bootstrap role.
+out=$("${BINARY}" get clusterroles --template-path "${TPL_DIR}" 2>&1)
+assert_contains "${out}" "NAME" "cluster-scoped ClusterRole: header present"
+assert_contains "${out}" "cluster-admin" "cluster-scoped ClusterRole: 'cluster-admin' row present (proves ns filter dropped)"
+
+# 7b: TYPE/NAME form — ensures the head-split-on-'/' path also detects
+# cluster-scope. Pick a role that always exists on kind.
+out=$("${BINARY}" get clusterrole/cluster-admin --template-path "${TPL_DIR}" 2>&1)
+assert_contains "${out}" "cluster-admin" "cluster-scoped ClusterRole (TYPE/NAME): specific role fetched"
+
+# 7c: Short name — kind clusters map 'clusterrole' short forms.
+out=$("${BINARY}" get clusterrole --template-path "${TPL_DIR}" 2>&1)
+assert_contains "${out}" "cluster-admin" "cluster-scoped ClusterRole (singular name): row present"
+
+# 7d: User-defined alias resolving to a cluster-scoped Kind — this was the
+# reported failure mode ('kc cwide get mw' with mw → mutatingwebhookconfigurations).
+"${BINARY}" alias set cr clusterroles >/dev/null 2>&1
+out=$("${BINARY}" get cr --template-path "${TPL_DIR}" 2>&1)
+assert_contains "${out}" "cluster-admin" "cluster-scoped ClusterRole (user alias 'cr'): row present (fixed bug)"
+"${BINARY}" alias delete cr >/dev/null 2>&1 || true
+
+# 7e: ValidatingWebhookConfiguration — the exact resource in the reported bug.
+# Header-only check because kind may ship zero VWCs. We're proving the LIST
+# call doesn't error out.
+out=$("${BINARY}" get validatingwebhookconfigurations --template-path "${TPL_DIR}" 2>&1)
+assert_contains "${out}" "NAME" "cluster-scoped VWC (full name): call succeeds (header present)"
+assert_not_contains "${out}" "the server could not find" "cluster-scoped VWC: not an unknown-resource error"
+
+# 7f: MutatingWebhookConfiguration — the twin fixed by the same PR.
+out=$("${BINARY}" get mutatingwebhookconfigurations --template-path "${TPL_DIR}" 2>&1)
+assert_contains "${out}" "NAME" "cluster-scoped MWC (full name): call succeeds (header present)"
+
+# =========================================================================
 # Summary
 # =========================================================================
 
