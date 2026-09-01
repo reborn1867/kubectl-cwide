@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
@@ -561,11 +562,21 @@ func (o *GetOptions) watch() error {
 }
 
 func (o *GetOptions) buildRequest() *resource.Result {
+	// Cluster-scoped resources (e.g. mutatingwebhookconfigurations,
+	// clusterroles, storageclasses, nodes) don't exist in any namespace.
+	// If we pass NamespaceParam(<current-ns>) unchanged the resource builder
+	// scopes the LIST to that namespace and the apiserver returns zero rows.
+	// Detect the case via the RESTMapper and force AllNamespaces so the
+	// builder drops the namespace filter.
+	allNamespaces := o.AllNamespaces
+	if !allNamespaces && anyClusterScoped(o.factory, o.args) {
+		allNamespaces = true
+	}
 	return o.factory.NewBuilder().
 		Unstructured().
 		DefaultNamespace().
 		NamespaceParam(o.Namespace).
-		AllNamespaces(o.AllNamespaces).
+		AllNamespaces(allNamespaces).
 		FilenameParam(o.ExplicitNamespace, &o.FilenameOptions).
 		LabelSelectorParam(o.LabelSelector).
 		FieldSelectorParam(o.FieldSelector).
@@ -576,6 +587,51 @@ func (o *GetOptions) buildRequest() *resource.Result {
 		Latest().
 		Flatten().
 		Do()
+}
+
+// anyClusterScoped reports whether any resource token in args resolves to a
+// cluster-scoped Kind. Best-effort: any lookup failure (unknown resource,
+// discovery down) is treated as "unknown, assume namespaced" — the caller
+// will still hit the standard error paths in the builder. Comma-separated
+// alias groups ("pod,svc") and TYPE/NAME forms ("mw/foo") are handled.
+func anyClusterScoped(factory cmdutil.Factory, args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	mapper, err := factory.ToRESTMapper()
+	if err != nil {
+		return false
+	}
+	for _, tok := range splitResourceTokens(args[0]) {
+		head, _, _ := strings.Cut(tok, "/")
+		if head == "" {
+			continue
+		}
+		gvk, err := mapper.KindFor(schema.GroupVersionResource{Resource: head})
+		if err != nil {
+			continue
+		}
+		mapping, err := mapper.RESTMapping(gvk.GroupKind(), gvk.Version)
+		if err != nil {
+			continue
+		}
+		if mapping.Scope != nil && mapping.Scope.Name() == meta.RESTScopeNameRoot {
+			return true
+		}
+	}
+	return false
+}
+
+// splitResourceTokens splits kubectl's "type1,type2" multi-type form.
+func splitResourceTokens(s string) []string {
+	if !strings.Contains(s, ",") {
+		return []string{s}
+	}
+	out := strings.Split(s, ",")
+	for i := range out {
+		out[i] = strings.TrimSpace(out[i])
+	}
+	return out
 }
 
 func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinter, error) {
