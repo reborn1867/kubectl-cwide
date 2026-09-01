@@ -3,6 +3,7 @@ package alias
 import (
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
@@ -24,24 +25,47 @@ func NewCmdAliasList() *cobra.Command {
 				return fmt.Errorf("failed to load config (run 'init' first): %w", err)
 			}
 
-			if len(config.Aliases) == 0 {
+			// Merge legacy Aliases + rich AliasEntries for display. If the
+			// same key appears in both, AliasEntries wins (matches
+			// ResolveAliasTarget semantics).
+			names := map[string]bool{}
+			for n := range config.Aliases {
+				names[n] = true
+			}
+			for n := range config.AliasEntries {
+				names[n] = true
+			}
+			if len(names) == 0 {
 				fmt.Fprintln(cmd.OutOrStdout(), "No aliases configured.")
 				return nil
 			}
-
-			// Sort aliases for deterministic output
-			aliases := make([]string, 0, len(config.Aliases))
-			for alias := range config.Aliases {
-				aliases = append(aliases, alias)
+			sorted := make([]string, 0, len(names))
+			for n := range names {
+				sorted = append(sorted, n)
 			}
-			sort.Strings(aliases)
+			sort.Strings(sorted)
 
 			w := printers.GetNewTabWriter(cmd.OutOrStdout())
 			defer w.Flush()
 
-			fmt.Fprintln(w, "ALIAS\tRESOURCE")
-			for _, alias := range aliases {
-				fmt.Fprintf(w, "%s\t%s\n", alias, config.Aliases[alias])
+			fmt.Fprintln(w, "ALIAS\tRESOURCE\tTEMPLATE")
+			for _, alias := range sorted {
+				resource := config.ResolveAliasTarget(alias)
+				tplDesc := ""
+				if e, ok := config.AliasEntries[alias]; ok {
+					switch {
+					case len(e.Templates) > 0:
+						parts := make([]string, 0, len(e.Templates))
+						for k, v := range e.Templates {
+							parts = append(parts, k+"="+v)
+						}
+						sort.Strings(parts)
+						tplDesc = strings.Join(parts, ",")
+					case e.Template != "":
+						tplDesc = e.Template
+					}
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\n", alias, resource, tplDesc)
 			}
 
 			return nil

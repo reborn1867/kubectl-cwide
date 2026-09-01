@@ -315,7 +315,10 @@ func ResolveAlias(args []string) []string {
 	}
 
 	config, err := LoadConfig()
-	if err != nil || len(config.Aliases) == 0 {
+	if err != nil {
+		return args
+	}
+	if len(config.Aliases) == 0 && len(config.AliasEntries) == 0 {
 		return args
 	}
 
@@ -324,8 +327,8 @@ func ResolveAlias(args []string) []string {
 
 	// Split on the first "/" so "rr/foo" resolves "rr" without losing "/foo".
 	head, rest, hasSlash := strings.Cut(args[0], "/")
-	target, ok := config.Aliases[head]
-	if !ok {
+	target := config.ResolveAliasTarget(head)
+	if target == "" {
 		return args
 	}
 	if hasSlash {
@@ -341,13 +344,16 @@ func ResolveAlias(args []string) []string {
 // preserved. Returns the input unchanged if no alias matches.
 func ResolveAliasString(name string) string {
 	config, err := LoadConfig()
-	if err != nil || len(config.Aliases) == 0 {
+	if err != nil {
+		return name
+	}
+	if len(config.Aliases) == 0 && len(config.AliasEntries) == 0 {
 		return name
 	}
 
 	head, rest, hasSlash := strings.Cut(name, "/")
-	target, ok := config.Aliases[head]
-	if !ok {
+	target := config.ResolveAliasTarget(head)
+	if target == "" {
 		return name
 	}
 	if hasSlash {

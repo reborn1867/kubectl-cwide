@@ -26,11 +26,14 @@ func NewCmdAliasDelete() *cobra.Command {
 				return fmt.Errorf("failed to load config (run 'init' first): %w", err)
 			}
 
-			if _, ok := config.Aliases[alias]; !ok {
+			_, legacyOk := config.Aliases[alias]
+			_, richOk := config.AliasEntries[alias]
+			if !legacyOk && !richOk {
 				return fmt.Errorf("alias %q not found", alias)
 			}
 
 			delete(config.Aliases, alias)
+			delete(config.AliasEntries, alias)
 
 			if err := utils.SaveConfig(config); err != nil {
 				return fmt.Errorf("failed to save config: %w", err)
