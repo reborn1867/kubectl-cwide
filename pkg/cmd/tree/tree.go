@@ -66,15 +66,26 @@ func NewCmdTree(streams genericiooptions.IOStreams) *cobra.Command {
 		Short:      "Show a tree of related Kubernetes resources",
 		Long: `Display a tree of Kubernetes resources linked by ownership, labels, or field references.
 
-Relationships are defined in a YAML rules file (--rules) or inline via --related flags.
-The tree starts from the specified root resource and discovers related resources
-according to the configured bindings.
+By default (no --rules or --related), the tree is auto-discovered: every
+listable resource is scanned for objects whose ownerReferences chain back to
+the root, so a bare 'kubectl cwide tree deployment/nginx' shows the full
+Deployment → ReplicaSet → Pod stack without any configuration.
+
+For non-ownerRef relationships (label selectors, field refs) or for custom
+kind-to-kind bindings, pass a YAML rules file with --rules or inline
+--related flags. Bindings mix freely with auto-discovery.
 
 Binding types:
   ownerRef       — child resources whose ownerReferences point to the parent
   labelSelector  — resources matched by the parent's label selector (bidirectional)
   fieldRef       — resources referenced by name in a parent's field (via JSONPath)`,
-		Example: `  # Show a deployment tree using a rules file
+		Example: `  # Auto-discover — no rules needed for the common Deployment/RS/Pod case
+  kubectl cwide tree deployment/nginx
+
+  # Across all namespaces
+  kubectl cwide tree deployment/nginx -A
+
+  # Show a deployment tree using a rules file (label selectors etc.)
   kubectl cwide tree deployment/nginx -f deploy-stack.yaml
 
   # Inline relationships
@@ -183,8 +194,10 @@ func (o *TreeOptions) Validate() error {
 	if o.Reverse {
 		return nil // ancestor walk uses ownerReferences, no relations required
 	}
+	// No relations configured is fine: Run() will auto-discover descendants
+	// by walking the cluster and following ownerReferences.
 	if len(o.relations) == 0 {
-		return fmt.Errorf("at least one relation is required (use --rules or --related)")
+		return nil
 	}
 	for _, rel := range o.relations {
 		switch rel.Bind.Type {
@@ -218,6 +231,12 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 
 	if o.Reverse {
 		return o.runReverse(ctx, rootNode)
+	}
+
+	// No relations configured → auto-discover descendants by scanning the
+	// cluster for objects whose ownerReferences chain back to the root.
+	if len(o.relations) == 0 {
+		return o.runAutoDiscover(ctx, rootNode)
 	}
 
 	// Build tree: topological resolution by parent dependency
