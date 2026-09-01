@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -97,13 +98,58 @@ func resolveTemplatePrinter(rootPath, crdTemplateDir, templateName string, decod
 	tplPath := filepath.Join(dir, templateName+".tpl")
 	data, err := os.ReadFile(tplPath)
 	if err != nil {
-		return nil, fmt.Errorf("template not found (tried %s.yaml and %s.tpl in %s)", templateName, templateName, dir)
+		return nil, templateNotFoundError(dir, templateName)
 	}
 
 	if sharedHelpers != "" {
 		data = append([]byte(sharedHelpers+"\n"), data...)
 	}
 	return NewCustomColumnsPrinterFromTemplate(strings.NewReader(string(data)), decoder, restConfig)
+}
+
+// templateNotFoundError formats a helpful error listing the templates that DO
+// exist in the resource's template directory. Users hitting a typo see the
+// available options inline instead of having to run 'template list -r ...'.
+func templateNotFoundError(dir, name string) error {
+	available := listAvailableTemplates(dir)
+	base := fmt.Sprintf("template %q not found (tried %s.yaml and %s.tpl in %s)",
+		name, name, name, dir)
+	if len(available) == 0 {
+		return fmt.Errorf("%s\n  no templates exist in this directory; run 'kubectl cwide init' or create one with 'kubectl cwide template create'", base)
+	}
+	return fmt.Errorf("%s\n  available templates: %s", base, strings.Join(available, ", "))
+}
+
+// listAvailableTemplates returns the sorted, deduplicated basenames of every
+// .yaml and .tpl file in dir. Returns nil when dir doesn't exist or is
+// unreadable — callers treat that as "no templates found".
+func listAvailableTemplates(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		n := e.Name()
+		switch {
+		case strings.HasSuffix(n, ".yaml"):
+			seen[strings.TrimSuffix(n, ".yaml")] = struct{}{}
+		case strings.HasSuffix(n, ".tpl"):
+			seen[strings.TrimSuffix(n, ".tpl")] = struct{}{}
+		}
+	}
+	if len(seen) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(seen))
+	for k := range seen {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // loadSharedHelpers concatenates every *.tpl file under <rootPath>/_shared/
