@@ -66,6 +66,14 @@ type GetOptions struct {
 
 	factory cmdutil.Factory
 	args    []string
+	// aliasName is the raw first-token the user typed before ResolveAlias
+	// rewrote it. Used to look up template bindings created by
+	// `alias set --template=... / --resource-template=...`.
+	aliasName string
+	// templateFlagChanged captures whether the user explicitly passed
+	// -t/--template. When true, alias-bound templates are not applied so
+	// the flag remains authoritative.
+	templateFlagChanged bool
 }
 
 // NewGetOptions returns a GetOptions with default chunk size 500.
@@ -150,6 +158,12 @@ func injectYAMLHelpers(data []byte, sharedHelpers string) []byte {
 
 // Complete resolves flags and sets up the factory.
 func (o *GetOptions) Complete(cmd *cobra.Command, args []string) error {
+	// Capture the raw first token BEFORE alias resolution so template
+	// binding lookups can find the alias entry that was used.
+	if len(args) > 0 {
+		head, _, _ := strings.Cut(args[0], "/")
+		o.aliasName = strings.ToLower(head)
+	}
 	o.args = utils.ResolveAlias(args)
 
 	rootPath, err := utils.ResolveTemplatePath(cmd)
@@ -173,11 +187,20 @@ func (o *GetOptions) Complete(cmd *cobra.Command, args []string) error {
 
 	o.NoHeaders = cmdutil.GetFlagBool(cmd, "no-headers")
 
-	// If the user didn't pass --template, resolve the per-context/per-namespace
-	// default from config.yaml, falling back to "default".
-	if !cmd.Flag("template").Changed {
+	// If the user didn't pass --template, resolve the default. Precedence:
+	// alias-bound template (from `alias set --template=...`) > per-context or
+	// per-namespace default > "default".
+	o.templateFlagChanged = cmd.Flag("template").Changed
+	if !o.templateFlagChanged {
 		if cfg, err := utils.LoadConfig(); err == nil {
-			o.Template = cfg.ResolveDefaultTemplate(o.Context, o.Namespace)
+			if o.aliasName != "" {
+				if t := cfg.ResolveAliasTemplate(o.aliasName, ""); t != "" {
+					o.Template = t
+				}
+			}
+			if o.Template == "" || o.Template == "default" {
+				o.Template = cfg.ResolveDefaultTemplate(o.Context, o.Namespace)
+			}
 		}
 	}
 
@@ -565,7 +588,22 @@ func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinte
 		return nil, fmt.Errorf("failed to get REST config: %w", err)
 	}
 
-	printer, err := resolveTemplatePrinter(o.TemplateRootPath, crdTemplateDir, o.Template, decoder, restConfig)
+	// Pick the effective template. When an alias is bound to per-kind
+	// templates ('alias set core pod,svc --resource-template pod=debug'),
+	// the multi-kind renderer needs a printer per kind — resolve the
+	// current kind's binding here. The user's explicit --template flag
+	// always wins over alias bindings.
+	tplName := o.Template
+	if o.aliasName != "" && !o.templateFlagChanged {
+		kind := strings.ToLower(infos[0].Object.GetObjectKind().GroupVersionKind().Kind)
+		if cfg, err := utils.LoadConfig(); err == nil {
+			if t := cfg.ResolveAliasTemplate(o.aliasName, kind); t != "" {
+				tplName = t
+			}
+		}
+	}
+
+	printer, err := resolveTemplatePrinter(o.TemplateRootPath, crdTemplateDir, tplName, decoder, restConfig)
 	if err != nil {
 		return nil, err
 	}

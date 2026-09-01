@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kubectl-cwide/pkg/clients"
+	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/discovery"
@@ -12,6 +13,8 @@ import (
 
 func NewCmdAliasSet() *cobra.Command {
 	var context string
+	var template string
+	var perKindTemplates []string
 
 	cmd := &cobra.Command{
 		Use:   "set ALIAS RESOURCE",
@@ -23,6 +26,11 @@ The RESOURCE argument may be a single resource type or a comma-separated list
 through to the resource builder unchanged, so 'kubectl cwide get <alias>' lists
 all of them at once.
 
+Bind a template with --template=NAME so 'cwide get <alias>' uses that template
+instead of the standard default. For alias groups, use --resource-template
+repeatedly to bind different templates per kind: --resource-template pod=debug
+--resource-template svc=wide.
+
 The alias is checked for conflicts against:
   - Existing aliases in the config
   - Built-in Kubernetes resource short names (via Discovery API)
@@ -32,8 +40,14 @@ alias is still saved.`,
 		Example: `  # Single-resource alias
   kubectl cwide alias set pd pods
 
+  # Alias with a bound template
+  kubectl cwide alias set pd pods --template debug
+
   # Alias group: 'core' lists pods, services, and configmaps together
   kubectl cwide alias set core pod,service,configmap
+
+  # Alias group with per-kind templates
+  kubectl cwide alias set core pod,service,cm --resource-template pod=debug --resource-template svc=wide
 
   # Long name → short alias
   kubectl cwide alias set vw validatingwebhookconfigurations`,
@@ -47,8 +61,10 @@ alias is still saved.`,
 				return fmt.Errorf("failed to load config (run 'init' first): %w", err)
 			}
 
-			// Check for duplicate against existing aliases
-			if existing, ok := config.Aliases[alias]; ok {
+			// Check for duplicate against existing aliases (rich or legacy).
+			if e, ok := config.AliasEntries[alias]; ok {
+				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: alias %q already exists (points to %q), will be overwritten\n", alias, e.Resource)
+			} else if existing, ok := config.Aliases[alias]; ok {
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: alias %q already exists (points to %q), will be overwritten\n", alias, existing)
 			}
 
@@ -66,21 +82,63 @@ alias is still saved.`,
 				}
 			}
 
-			if config.Aliases == nil {
-				config.Aliases = make(map[string]string)
+			// Parse --resource-template flags into a map.
+			perKind := map[string]string{}
+			for _, spec := range perKindTemplates {
+				k, v, ok := strings.Cut(spec, "=")
+				if !ok || k == "" || v == "" {
+					return fmt.Errorf("invalid --resource-template %q; expected kind=template", spec)
+				}
+				perKind[strings.ToLower(strings.TrimSpace(k))] = strings.TrimSpace(v)
 			}
-			config.Aliases[alias] = resource
+
+			// If any template binding was requested, use the rich AliasEntries
+			// path; otherwise write to the legacy Aliases map for backward compat.
+			if template != "" || len(perKind) > 0 {
+				if config.AliasEntries == nil {
+					config.AliasEntries = make(map[string]models.AliasEntry)
+				}
+				config.AliasEntries[alias] = models.AliasEntry{
+					Resource:  resource,
+					Template:  template,
+					Templates: perKind,
+				}
+				// Remove legacy entry so lookups stay consistent.
+				delete(config.Aliases, alias)
+			} else {
+				if config.Aliases == nil {
+					config.Aliases = make(map[string]string)
+				}
+				config.Aliases[alias] = resource
+				delete(config.AliasEntries, alias)
+			}
 
 			if err := utils.SaveConfig(config); err != nil {
 				return fmt.Errorf("failed to save config: %w", err)
 			}
 
-			fmt.Fprintf(cmd.OutOrStdout(), "Alias set: %s → %s\n", alias, resource)
+			// User-facing confirmation reflects the effective binding.
+			msg := fmt.Sprintf("Alias set: %s → %s", alias, resource)
+			if template != "" {
+				msg += fmt.Sprintf(" (template=%s)", template)
+			}
+			if len(perKind) > 0 {
+				parts := make([]string, 0, len(perKind))
+				for k, v := range perKind {
+					parts = append(parts, k+"="+v)
+				}
+				msg += fmt.Sprintf(" (per-kind: %s)", strings.Join(parts, ","))
+			}
+			fmt.Fprintln(cmd.OutOrStdout(), msg)
 			return nil
 		},
 	}
 
 	cmd.Flags().StringVar(&context, "context", "", "The name of the kubeconfig context to use")
+	cmd.Flags().StringVarP(&template, "template", "t", "",
+		"Bind a template name to this alias so 'get <alias>' uses it as the default")
+	cmd.Flags().StringArrayVar(&perKindTemplates, "resource-template", nil,
+		"For alias groups: kind=template to bind different templates per kind (repeatable, e.g. --resource-template pod=debug)")
 
 	return cmd
 }

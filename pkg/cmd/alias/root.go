@@ -23,6 +23,8 @@ alias for 'pods', you can run 'kubectl cwide get pd' instead of 'kubectl cwide g
 	cmd.AddCommand(NewCmdAliasSet())
 	cmd.AddCommand(NewCmdAliasList())
 	cmd.AddCommand(NewCmdAliasDelete())
+	cmd.AddCommand(NewCmdAliasExport())
+	cmd.AddCommand(NewCmdAliasImport())
 
 	return cmd
 }
