@@ -145,12 +145,13 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "no relations",
+			// No relations is now valid — Validate defers to Run's
+			// auto-discovery walk over ownerReferences.
+			name: "no relations triggers auto-discover, no validation error",
 			opts: TreeOptions{
 				rootResource: "deployment",
 				rootName:     "nginx",
 			},
-			wantErr: "at least one relation",
 		},
 		{
 			name: "invalid bind type",
