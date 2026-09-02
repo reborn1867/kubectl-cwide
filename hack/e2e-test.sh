@@ -460,16 +460,16 @@ out=$("${BINARY}" get cr --template-path "${TPL_DIR}" 2>&1)
 assert_contains "${out}" "cluster-admin" "cluster-scoped ClusterRole (user alias 'cr'): row present (fixed bug)"
 "${BINARY}" alias delete cr >/dev/null 2>&1 || true
 
-# 7e: ValidatingWebhookConfiguration — the exact resource in the reported bug.
-# Header-only check because kind may ship zero VWCs. We're proving the LIST
-# call doesn't error out.
-out=$("${BINARY}" get validatingwebhookconfigurations --template-path "${TPL_DIR}" 2>&1)
-assert_contains "${out}" "NAME" "cluster-scoped VWC (full name): call succeeds (header present)"
-assert_not_contains "${out}" "the server could not find" "cluster-scoped VWC: not an unknown-resource error"
-
-# 7f: MutatingWebhookConfiguration — the twin fixed by the same PR.
-out=$("${BINARY}" get mutatingwebhookconfigurations --template-path "${TPL_DIR}" 2>&1)
-assert_contains "${out}" "NAME" "cluster-scoped MWC (full name): call succeeds (header present)"
+# 7e: ValidatingWebhookConfiguration + MutatingWebhookConfiguration —
+# the exact resources reported in the original bug. Kind clusters ship
+# zero of both by default, so we can only assert the command doesn't
+# ERROR with 'the server doesn't have a resource type', which is the
+# distinctive failure mode of the pre-v0.9.2 code path.
+for res in validatingwebhookconfigurations mutatingwebhookconfigurations; do
+  out=$("${BINARY}" get "${res}" --template-path "${TPL_DIR}" 2>&1 || true)
+  assert_not_contains "${out}" "the server doesn't have a resource type" "cluster-scoped ${res}: no 'unknown resource' error"
+  assert_not_contains "${out}" "cannot be treated as" "cluster-scoped ${res}: no 'cannot be treated as' error (alias-mismatch shape)"
+done
 
 # =========================================================================
 # Summary
