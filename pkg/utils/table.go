@@ -19,6 +19,15 @@ import (
 	// on legacyscheme.Scheme. These are required so that the codec below can
 	// decode an unstructured object into the internal API type expected by
 	// the kubectl print handlers.
+	//
+	// Missing an install here manifests as GenerateTable returning
+	// 'no kind "X" is registered for version "Y" in scheme ...',
+	// which the customcolumn printer silently swallows — the header prints
+	// but every data row's $_defaultPrinterField columns come out empty.
+	// So this list must cover every API group whose printer is registered
+	// upstream in k8s.io/kubernetes/pkg/printers/internalversion.
+	_ "k8s.io/kubernetes/pkg/apis/admissionregistration/install"
+	_ "k8s.io/kubernetes/pkg/apis/apiserverinternal/install"
 	_ "k8s.io/kubernetes/pkg/apis/apps/install"
 	_ "k8s.io/kubernetes/pkg/apis/authentication/install"
 	_ "k8s.io/kubernetes/pkg/apis/authorization/install"
@@ -30,11 +39,15 @@ import (
 	_ "k8s.io/kubernetes/pkg/apis/discovery/install"
 	_ "k8s.io/kubernetes/pkg/apis/events/install"
 	_ "k8s.io/kubernetes/pkg/apis/extensions/install"
+	_ "k8s.io/kubernetes/pkg/apis/flowcontrol/install"
+	_ "k8s.io/kubernetes/pkg/apis/networking/install"
+	_ "k8s.io/kubernetes/pkg/apis/node/install"
 	_ "k8s.io/kubernetes/pkg/apis/policy/install"
 	_ "k8s.io/kubernetes/pkg/apis/rbac/install"
 	_ "k8s.io/kubernetes/pkg/apis/resource/install"
 	_ "k8s.io/kubernetes/pkg/apis/scheduling/install"
 	_ "k8s.io/kubernetes/pkg/apis/storage/install"
+	_ "k8s.io/kubernetes/pkg/apis/storagemigration/install"
 )
 
 type handlerEntry struct {
