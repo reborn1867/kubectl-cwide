@@ -2,6 +2,7 @@ package template
 
 import (
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,28 +12,120 @@ import (
 	"k8s.io/client-go/util/jsonpath"
 
 	"github.com/kubectl-cwide/pkg/models"
+	"github.com/kubectl-cwide/pkg/utils"
 )
 
 func NewCmdLint() *cobra.Command {
-	return &cobra.Command{
-		Use:   "lint <template-file>",
-		Short: "Statically validate a column template file",
+	var recursive bool
+
+	cmd := &cobra.Command{
+		Use:   "lint [template-file|directory]",
+		Short: "Statically validate one or more column template files",
 		Long: `Parse a .yaml or .tpl template and check that:
   - the file is syntactically valid
   - every JSONPath field spec parses cleanly
   - every text/template body parses cleanly (best-effort — no execution)
 
-Does NOT contact the cluster or resolve schema against a live API.`,
+Does NOT contact the cluster or resolve schema against a live API.
+
+With --recursive, walks a directory (or the resolved template root if no
+argument is given) and lints every .yaml/.yml/.tpl file below it. Exits
+non-zero if any file fails; prints a summary at the end.`,
 		Example: `  # Lint one template
   kubectl cwide template lint ~/.kubectl-cwide/templates/pod--v1/default.yaml
 
-  # Lint every template under a directory
-  find ~/.kubectl-cwide/templates -name '*.yaml' -exec kubectl cwide template lint {} \;`,
-		Args: cobra.ExactArgs(1),
+  # Lint every template under the template root (uses --template-path config)
+  kubectl cwide template lint --recursive
+
+  # Lint every template under a specific directory
+  kubectl cwide template lint --recursive ~/.kubectl-cwide/templates
+
+  # Same, short form
+  kubectl cwide template lint -R ~/.kubectl-cwide/templates`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if recursive {
+				root := ""
+				if len(args) > 0 {
+					root = args[0]
+				} else {
+					// No path given → resolve from config, matching what
+					// 'get' / 'template list' do when the user is invoking
+					// cwide against their standard template tree.
+					r, err := utils.ResolveTemplatePath(cmd)
+					if err != nil {
+						return fmt.Errorf("no path given and template root couldn't be resolved: %w", err)
+					}
+					root = r
+				}
+				return lintTree(cmd, root)
+			}
+			if len(args) == 0 {
+				return fmt.Errorf("either pass a file path or use --recursive to lint a directory tree")
+			}
 			return lintOne(cmd, args[0])
 		},
 	}
+
+	cmd.Flags().BoolVarP(&recursive, "recursive", "R", false,
+		"Walk a directory (or the template root if no path is given) and lint every .yaml/.yml/.tpl file below it")
+
+	return cmd
+}
+
+// lintTree walks root and lints every template file it finds. Aggregates
+// per-file results and returns a non-nil error if any file fails, so the
+// exit code reflects overall success/failure. Continues past failures so
+// the user sees the full picture instead of stopping at the first bad file.
+func lintTree(cmd *cobra.Command, root string) error {
+	info, err := os.Stat(root)
+	if err != nil {
+		return fmt.Errorf("stat %s: %w", root, err)
+	}
+	if !info.IsDir() {
+		// --recursive on a file is a benign no-op — lint the one file.
+		return lintOne(cmd, root)
+	}
+
+	var okCount, failCount int
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			// Skip unreadable subdirs but surface them so the user can
+			// diagnose permissions.
+			fmt.Fprintf(cmd.ErrOrStderr(), "skip %s: %v\n", path, err)
+			return nil
+		}
+		if d.IsDir() {
+			// Don't recurse into a _shared helpers dir — those files are
+			// fragments, not standalone templates, and would trip the
+			// 'template has no columns' check.
+			if d.Name() == "_shared" && path != root {
+				return fs.SkipDir
+			}
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(path))
+		if ext != ".yaml" && ext != ".yml" && ext != ".tpl" {
+			return nil
+		}
+		if err := lintOne(cmd, path); err != nil {
+			failCount++
+			// lintOne already printed FAIL + reasons; keep walking.
+			return nil
+		}
+		okCount++
+		return nil
+	})
+	if walkErr != nil {
+		return walkErr
+	}
+
+	total := okCount + failCount
+	fmt.Fprintf(cmd.OutOrStdout(), "\nLint: %d ok, %d failed (%d files)\n", okCount, failCount, total)
+	if failCount > 0 {
+		return fmt.Errorf("%d template(s) failed lint", failCount)
+	}
+	return nil
 }
 
 func lintOne(cmd *cobra.Command, path string) error {
