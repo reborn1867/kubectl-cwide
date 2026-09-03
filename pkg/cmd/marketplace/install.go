@@ -5,9 +5,12 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
+	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 func NewCmdInstall() *cobra.Command {
@@ -97,6 +100,13 @@ is specified.`,
 				return fmt.Errorf("failed to download template: %w", err)
 			}
 
+			// Stamp provenance metadata into the YAML so 'template list' and
+			// future 'template diff' commands can tell where each template
+			// came from and at what version. Best-effort: if the download
+			// isn't a parseable YAML template, we skip stamping and write it
+			// through unchanged.
+			data = stampMarketplaceMetadata(data, repo, ref)
+
 			// Ensure the directory exists and write the file
 			if err := os.MkdirAll(localDir, 0755); err != nil {
 				return fmt.Errorf("failed to create directory %s: %w", localDir, err)
@@ -130,4 +140,50 @@ is specified.`,
 	installCMD.MarkFlagRequired("template")
 
 	return installCMD
+}
+
+// stampMarketplaceMetadata rewrites the provenance block on a downloaded
+// template's YAML so 'template list' and future 'template diff' commands can
+// tell where each file came from. Best-effort: on any parse failure the
+// input is returned unchanged, so an unparseable download (or a .tpl file
+// masquerading as .yaml) still writes cleanly.
+//
+// If the template already had a Metadata block (e.g. the upstream author
+// baked one in), we OVERWRITE Source/SourceRepo/SourceRef/InstalledAt
+// because those describe the CURRENT install action, not the upstream
+// state — but we preserve their Version if they set one, since that is
+// the marketplace author's declared version and outranks a ref that
+// could be a mutable branch.
+func stampMarketplaceMetadata(data []byte, repo, ref string) []byte {
+	var tmpl models.YAMLTemplate
+	if err := yaml.Unmarshal(data, &tmpl); err != nil {
+		return data
+	}
+	if len(tmpl.Columns) == 0 {
+		// Not a template shape — leave alone.
+		return data
+	}
+
+	preservedVersion := ""
+	if tmpl.Metadata != nil {
+		preservedVersion = tmpl.Metadata.Version
+	}
+	tmpl.Metadata = &models.TemplateMetadata{
+		Source:      "marketplace",
+		SourceRepo:  repo,
+		SourceRef:   ref,
+		Version:     preservedVersion,
+		InstalledAt: time.Now().UTC().Format(time.RFC3339),
+	}
+	// Default Version to the ref when the upstream didn't declare one.
+	// Refs that look like tags/versions are usually what users mean.
+	if tmpl.Metadata.Version == "" {
+		tmpl.Metadata.Version = ref
+	}
+
+	out, err := yaml.Marshal(&tmpl)
+	if err != nil {
+		return data
+	}
+	return out
 }
