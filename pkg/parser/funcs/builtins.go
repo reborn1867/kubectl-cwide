@@ -119,6 +119,27 @@ var ansiColorCodes = map[string]string{
 	"gray":    "90",
 }
 
+// Colorize wraps text in the named ANSI color, honoring the same enable/disable
+// gate as ColorIf (NO_COLOR env and the --no-color flag). Unrecognized colors
+// or disabled color return the text unchanged. Exported for callers outside the
+// template path (e.g. watch delta highlighting).
+func Colorize(color, text string) string {
+	if !colorEnabled() {
+		return text
+	}
+	code, ok := ansiColorCodes[color]
+	if !ok {
+		return text
+	}
+	return "\x1b[" + code + "m" + text + "\x1b[0m"
+}
+
+// ColorEnabled reports whether ANSI color escapes should be emitted, exposing
+// the internal gate to callers outside this package.
+func ColorEnabled() bool {
+	return colorEnabled()
+}
+
 // SafeIndex walks a nested map/slice structure by keys/indices, returning
 // "" (or the zero value) if any level is missing. String keys index maps;
 // integer keys or numeric strings index slices.

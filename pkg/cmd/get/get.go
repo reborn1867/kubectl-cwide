@@ -550,6 +550,11 @@ func (o *GetOptions) watch() error {
 		return err
 	}
 
+	// In watch mode, highlight cells that change between ticks. Works for both
+	// the bordered custom table (--ctable) and the default tabwriter output;
+	// structured output formats never reach this path.
+	printer.WithDeltaHighlight()
+
 	outputObjects := ptr.To(!o.WatchOnly)
 
 	// print the current objects
@@ -565,6 +570,9 @@ func (o *GetOptions) watch() error {
 	} else {
 		w.Flush()
 	}
+
+	// The initial listing is the baseline; from here on, changed cells light up.
+	printer.MarkFirstTickDone()
 
 	obj, err := r.Object()
 	if err != nil {
