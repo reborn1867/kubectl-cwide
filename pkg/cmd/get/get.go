@@ -106,13 +106,69 @@ func resolveTemplatePrinter(rootPath, crdTemplateDir, templateName string, decod
 	tplPath := filepath.Join(dir, templateName+".tpl")
 	data, err := os.ReadFile(tplPath)
 	if err != nil {
-		return nil, fmt.Errorf("template not found (tried %s.yaml and %s.tpl in %s)", templateName, templateName, dir)
+		return nil, templateNotFoundError(templateName, dir)
 	}
 
 	if sharedHelpers != "" {
 		data = append([]byte(sharedHelpers+"\n"), data...)
 	}
 	return NewCustomColumnsPrinterFromTemplate(strings.NewReader(string(data)), decoder, restConfig)
+}
+
+// templateNotFoundError builds an error for a missing template that also
+// lists the templates actually installed for this resource, so the user
+// sees "you typed abc; available: default, wide" instead of having to run
+// a separate `template list` to figure out what's there.
+func templateNotFoundError(templateName, dir string) error {
+	available := listInstalledTemplates(dir)
+	if len(available) == 0 {
+		return fmt.Errorf("template %q not found — no templates installed in %s (run 'kubectl cwide init' or 'kubectl cwide template scaffold')",
+			templateName, dir)
+	}
+	return fmt.Errorf("template %q not found in %s; available: %s",
+		templateName, dir, strings.Join(available, ", "))
+}
+
+// listInstalledTemplates returns the basenames (without extension) of every
+// .yaml/.tpl template installed in dir, sorted and deduplicated. A .yaml and
+// a .tpl with the same basename collapse to one entry — resolveTemplatePrinter
+// tries .yaml first, so that reflects the effective set.
+func listInstalledTemplates(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		switch {
+		case strings.HasSuffix(name, ".yaml"):
+			seen[strings.TrimSuffix(name, ".yaml")] = struct{}{}
+		case strings.HasSuffix(name, ".yml"):
+			seen[strings.TrimSuffix(name, ".yml")] = struct{}{}
+		case strings.HasSuffix(name, ".tpl"):
+			seen[strings.TrimSuffix(name, ".tpl")] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	sortStrings(out)
+	return out
+}
+
+// sortStrings is a tiny wrapper so callers don't need to import sort just
+// for this — keeps this helper file's import footprint stable.
+func sortStrings(s []string) {
+	for i := 1; i < len(s); i++ {
+		for j := i; j > 0 && s[j-1] > s[j]; j-- {
+			s[j-1], s[j] = s[j], s[j-1]
+		}
+	}
 }
 
 // loadSharedHelpers concatenates every *.tpl file under <rootPath>/_shared/
