@@ -278,6 +278,23 @@ type CustomColumnsPrinter struct {
 	// RowSink, when non-nil, captures each row's column values instead of
 	// writing them to the tabwriter. Used by structured output formats.
 	RowSink func(cols []string)
+	// delta, when non-nil, highlights cells that changed since the previous
+	// watch tick. Only set in watch mode via WithDeltaHighlight.
+	delta *deltaTracker
+}
+
+// WithDeltaHighlight enables per-tick change highlighting for watch mode. Cells
+// whose value changed since the previous render are colored (respecting
+// --no-color / NO_COLOR). Safe to call only when a CustomTable is in use.
+func (s *CustomColumnsPrinter) WithDeltaHighlight() *CustomColumnsPrinter {
+	s.delta = newDeltaTracker(s.Headers)
+	return s
+}
+
+// MarkFirstTickDone tells the delta tracker the initial listing has rendered,
+// so subsequent events begin highlighting. No-op when highlighting is off.
+func (s *CustomColumnsPrinter) MarkFirstTickDone() {
+	s.delta.markFirstTickDone()
 }
 
 // SelectColumns filters the printer's Columns/Headers to the named subset,
@@ -447,35 +464,46 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		columns[ix] = col
 	}
 
+	if s.RowSink != nil {
+		// Structured output (csv/json/yaml) must stay machine-clean: never
+		// decorate, and emit the raw rendered columns.
+		s.RowSink(append([]string(nil), columns...))
+		return nil
+	}
+
+	// For human-facing output, apply watch delta highlighting (no-op when the
+	// tracker is nil or color is disabled). ANSI escapes contain no newlines,
+	// so the multi-line split below is unaffected.
+	cells := s.delta.decorate(columns)
+
+	if s.CustomTable != nil {
+		var row table.Row
+		for idx := range cells {
+			row = append(row, cells[idx])
+		}
+		s.CustomTable.AppendRow(row)
+		return nil
+	}
+
 	var multiLinesColumns [][]string
 	// if the column has multiple lines (e.g. a template that outputs multiple lines), we need to split it
 	var maxLen int
-	for _, col := range columns {
+	for _, col := range cells {
 		lines := strings.Split(col, "\n")
 		maxLen = max(maxLen, len(lines))
 		multiLinesColumns = append(multiLinesColumns, lines)
 	}
 
-	if s.RowSink != nil {
-		s.RowSink(append([]string(nil), columns...))
-	} else if s.CustomTable != nil {
-		var row table.Row
-		for idx := range columns {
-			row = append(row, columns[idx])
-		}
-		s.CustomTable.AppendRow(row)
-	} else {
-		for i := 0; i < maxLen; i++ {
-			var lineColumns []string
-			for _, multiLinesCol := range multiLinesColumns {
-				if i < len(multiLinesCol) {
-					lineColumns = append(lineColumns, multiLinesCol[i])
-				} else {
-					lineColumns = append(lineColumns, "")
-				}
+	for i := 0; i < maxLen; i++ {
+		var lineColumns []string
+		for _, multiLinesCol := range multiLinesColumns {
+			if i < len(multiLinesCol) {
+				lineColumns = append(lineColumns, multiLinesCol[i])
+			} else {
+				lineColumns = append(lineColumns, "")
 			}
-			fmt.Fprintln(out, strings.Join(lineColumns, "\t"))
 		}
+		fmt.Fprintln(out, strings.Join(lineColumns, "\t"))
 	}
 	return nil
 }

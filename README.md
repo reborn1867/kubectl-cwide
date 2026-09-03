@@ -593,6 +593,25 @@ kubectl cwide get pod -A \
   -o csv
 ```
 
+#### `-w/--watch` — live view with change highlighting
+
+Watch mode re-renders your custom columns on every cluster event. Cells that
+**changed since the previous tick** are highlighted so a moving value jumps out
+of a busy table:
+
+```sh
+kubectl cwide get pod -w
+kubectl cwide get pod -w --ctable          # bordered table variant
+```
+
+- Rows are correlated by identity (NAMESPACE + NAME), not by position — a row
+  that reorders between ticks is *not* falsely flagged as changed.
+- A changed cell is colored yellow; a brand-new row is colored green.
+- The initial listing is the baseline and is never highlighted.
+- Highlighting respects `--no-color` and `NO_COLOR` — with color off, the
+  output is byte-identical to a plain render, so piping stays clean.
+- Structured output (`-o csv|template-json|template-yaml`) is never decorated.
+
 ### `tree`: bounded depth, cycle detection, and reverse walks
 
 #### `--max-depth`
