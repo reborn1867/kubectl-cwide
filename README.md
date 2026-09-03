@@ -517,6 +517,26 @@ kubectl cwide get pod -c NAME,STATUS,AGE
 
 Column names are case-insensitive and matched against the header text emitted by the template. If a name doesn't match, the command errors out and lists the available headers.
 
+#### `-L/--label-columns` and `--show-labels` — surface labels without editing the template
+
+Add label values as extra columns on the fly, matching `kubectl`'s flags of the
+same name — no template change required:
+
+```sh
+# One column per label key (header = the key verbatim; empty when absent).
+# Label keys with dots/slashes work as-is (e.g. app.kubernetes.io/name).
+kubectl cwide get pod -L app -L tier
+kubectl cwide get pod --label-columns=app,tier
+
+# Append a single LABELS column with every label as sorted key=value pairs
+# ("<none>" when the object has no labels).
+kubectl cwide get pod --show-labels
+```
+
+Label columns are appended after any `-c/--columns` selection, so they are never
+filtered out, and they compose with `--sort-by`, `--filter`, and `-o` output
+formats just like template columns.
+
 #### `-o/--output` — native and template-driven output
 
 Two families of output formats:

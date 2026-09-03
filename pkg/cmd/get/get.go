@@ -64,6 +64,10 @@ type GetOptions struct {
 	Output            string
 	SortColumn        string
 	FilterExprs       []string
+	// LabelColumns adds one output column per label key (kubectl -L).
+	LabelColumns []string
+	// ShowLabels appends a single LABELS column with all labels (kubectl --show-labels).
+	ShowLabels bool
 
 	factory cmdutil.Factory
 	args    []string
@@ -757,6 +761,11 @@ func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinte
 		}
 	}
 
+	// Append label columns (-L/--label-columns and --show-labels) after column
+	// selection so they're never filtered out, and before WithCustomTable which
+	// snapshots the header row.
+	printer.AppendLabelColumns(o.LabelColumns, o.ShowLabels)
+
 	if o.EnableCustomTable {
 		printer.WithCustomTable()
 	}
@@ -821,6 +830,8 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 		cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().StringVar(&o.SortColumn, "sort-by", "", "Column header to sort rows by (case-insensitive). Numeric strings sort numerically.")
 	cmd.Flags().StringArrayVar(&o.FilterExprs, "filter", nil, "Filter rows by column values: COL=val, COL!=val, COL~regex, COL!~regex (repeatable, ANDed).")
+	cmd.Flags().StringSliceVarP(&o.LabelColumns, "label-columns", "L", nil, "Comma-separated label keys to add as extra output columns; each key becomes a column of that label's value (repeatable).")
+	cmd.Flags().BoolVar(&o.ShowLabels, "show-labels", false, "Append a LABELS column listing all labels as key=value pairs.")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
 	_ = cmd.RegisterFlagCompletionFunc("context", completions.KubeContexts)
