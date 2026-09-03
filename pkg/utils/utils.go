@@ -220,15 +220,25 @@ func BuildYAMLTableColumnTemplate(columns []metav1.TableColumnDefinition) ([]byt
 	return yaml.Marshal(&tmpl)
 }
 
-// CreateOrFormatYAMLFile creates a YAML template file or preserves the existing one.
+// CreateOrFormatYAMLFile writes a YAML template file, but never overwrites or
+// shadows an existing template. If a template with the same base name already
+// exists in either the .yaml or .tpl format, it is left untouched. This keeps
+// `init` safe to re-run over a populated template directory.
 func CreateOrFormatYAMLFile(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return err
 	}
 
-	// If file already exists, preserve user edits
-	if _, err := os.Stat(path); err == nil {
-		return nil
+	// If a template with the same base name already exists — in either the
+	// .yaml or the .tpl format — preserve it and write nothing. `get` resolves
+	// .yaml before .tpl, so blindly writing a fresh default.yaml next to a
+	// user's hand-edited default.tpl would silently shadow (effectively erase)
+	// their template. Skipping here keeps `init` non-destructive and idempotent.
+	base := strings.TrimSuffix(path, filepath.Ext(path))
+	for _, ext := range []string{".yaml", ".tpl"} {
+		if _, err := os.Stat(base + ext); err == nil {
+			return nil
+		}
 	}
 
 	return os.WriteFile(path, content, 0644)
