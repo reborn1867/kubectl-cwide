@@ -15,6 +15,7 @@ func NewCmdAliasSet() *cobra.Command {
 	var context string
 	var template string
 	var perKindTemplates []string
+	var force bool
 
 	cmd := &cobra.Command{
 		Use:   "set ALIAS RESOURCE",
@@ -32,11 +33,11 @@ repeatedly to bind different templates per kind: --resource-template pod=debug
 --resource-template svc=wide.
 
 The alias is checked for conflicts against:
-  - Existing aliases in the config
-  - Built-in Kubernetes resource short names (via Discovery API)
-
-A warning is printed if the alias conflicts with an existing name, but the
-alias is still saved.`,
+  - Existing aliases in the config (existing entry is overwritten with a warning)
+  - Kubernetes resource names, plurals, and short names via Discovery — this
+    covers built-ins AND any registered CRDs. A collision here is rejected
+    with an error because 'cwide get <alias>' would silently shadow the real
+    resource. Pass --force to override that check.`,
 		Example: `  # Single-resource alias
   kubectl cwide alias set pd pods
 
@@ -68,10 +69,25 @@ alias is still saved.`,
 				fmt.Fprintf(cmd.ErrOrStderr(), "Warning: alias %q already exists (points to %q), will be overwritten\n", alias, existing)
 			}
 
-			// Check for duplicate against built-in k8s short names
+			// Check for duplicate against k8s resource names + short names
+			// (walks Discovery, so CRDs are covered along with built-ins).
+			// A conflict here would silently shadow the real resource in
+			// 'cwide get <name>' — that's a footgun, so we reject the alias.
+			// Users who really want to shadow can pass --force.
 			if conflicts := checkK8sShortNameConflicts(cmd, context, alias); len(conflicts) > 0 {
+				lines := make([]string, 0, len(conflicts))
 				for _, c := range conflicts {
-					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %q conflicts with built-in short name for %q (%s)\n", alias, c.resource, c.apiVersion)
+					lines = append(lines, fmt.Sprintf("  - %s (%s)", c.resource, c.apiVersion))
+				}
+				if !force {
+					return fmt.Errorf(
+						"alias %q collides with an existing cluster resource:\n%s\n"+
+							"'cwide get %s' would silently shadow the real resource. "+
+							"Pick a different alias name, or pass --force to override.",
+						alias, strings.Join(lines, "\n"), alias)
+				}
+				for _, l := range lines {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Warning: %q conflicts with existing resource:\n%s\n  proceeding because --force was set\n", alias, l)
 				}
 			}
 
@@ -139,6 +155,8 @@ alias is still saved.`,
 		"Bind a template name to this alias so 'get <alias>' uses it as the default")
 	cmd.Flags().StringArrayVar(&perKindTemplates, "resource-template", nil,
 		"For alias groups: kind=template to bind different templates per kind (repeatable, e.g. --resource-template pod=debug)")
+	cmd.Flags().BoolVar(&force, "force", false,
+		"Save the alias even if it collides with an existing cluster resource name or short name (default: reject with an error).")
 
 	return cmd
 }
