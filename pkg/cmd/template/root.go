@@ -22,6 +22,7 @@ the config file created by 'init').`,
 	templateCMD.AddCommand(NewCmdEdit())
 	templateCMD.AddCommand(NewCmdLint())
 	templateCMD.AddCommand(NewCmdScaffold())
+	templateCMD.AddCommand(NewCmdDiff())
 
 	return templateCMD
 }
