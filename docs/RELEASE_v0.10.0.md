@@ -14,7 +14,7 @@ in v0.8.0, so the remaining new work is items #7 and #8 plus the local
 
 | Roadmap # | Feature | Branch | Base | Status |
 |-----------|---------|--------|------|--------|
-| 1 | `template diff --against-file / --against-recipe` | `feat/template-diff` | pre-v0.9.4 main | **needs rebase** onto current main before merge |
+| 1 | `template diff --against-file / --against-recipe` | `feat/template-diff` | current main (rebased) | ready; rebased onto `be420f4`, diff is clean; verify in CI |
 | 7 | `get -w` change highlighting | `feat/watch-delta-highlight` | current main | ready; verified `go build`/`go test`/`go vet` green |
 | 8 | `get -L/--label-columns` + `--show-labels` | `feat/label-columns` | current main | ready; verify in CI |
 
@@ -26,17 +26,16 @@ in v0.8.0, so the remaining new work is items #7 and #8 plus the local
    `get.go`. Overlaps the same files as #7 only in disjoint regions
    (watch loop vs. column assembly), so a trivial merge; land after #7 to keep
    conflict resolution one-directional.
-3. **`feat/template-diff`** — **rebase onto current main first.** A raw diff
-   against today's main shows it *removing* `pkg/utils/create_yaml_test.go` and
-   re-touching `pkg/utils/utils.go`, because the branch predates the v0.9.4
-   init-preserve fix (commit `be420f4`). Rebasing drops those phantom changes so
-   only the `template diff` addition remains.
+3. **`feat/template-diff`** — **already rebased onto current main** (tip
+   `f2176af`; `be420f4` is now an ancestor). The rebase applied cleanly with no
+   conflicts — the branch only touches `pkg/cmd/template/*`, disjoint from the
+   v0.9.4 fix's `pkg/utils/*` changes. Its diff against main is now purely the
+   `template diff` + scaffold-examples addition; the earlier phantom deletion of
+   `pkg/utils/create_yaml_test.go` is gone. Nothing further needed before the PR.
 
    ```sh
-   git checkout feat/template-diff
-   git rebase main            # resolve the utils.go/create_yaml_test.go overlap
-   # confirm the diff is purely the template-diff addition:
-   git diff --stat main..HEAD
+   # verification already done; to re-confirm:
+   git diff --stat main..feat/template-diff   # only pkg/cmd/template/* files
    ```
 
 ## Per-branch summary
