@@ -3,15 +3,33 @@ package template
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"path"
 	"path/filepath"
 	"strings"
 
 	"github.com/kubectl-cwide/pkg/cmd/completions"
+	"github.com/kubectl-cwide/pkg/parser/funcs"
 	"github.com/kubectl-cwide/pkg/utils"
 	"github.com/spf13/cobra"
 )
+
+// isTerminal reports whether w is a character device (an interactive TTY).
+// Used to gate ANSI coloring so redirected/piped diff output stays plain and
+// byte-stable. Anything that isn't an *os.File (e.g. a test buffer) is treated
+// as non-terminal.
+func isTerminal(w io.Writer) bool {
+	f, ok := w.(*os.File)
+	if !ok {
+		return false
+	}
+	info, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return info.Mode()&os.ModeCharDevice != 0
+}
 
 // NewCmdDiff shows a unified diff between an installed template and another
 // source — either a local file (--against-file) or a bundled cookbook recipe
@@ -36,7 +54,12 @@ Sources:
 
 Diff is emitted in unified format with 3 lines of context. Timestamps are
 omitted so the diff is byte-stable for identical inputs — pipe it into
-tooling without worrying about spurious changes.`,
+tooling without worrying about spurious changes.
+
+When writing to an interactive terminal the diff is colorized (added lines
+green, removed red, hunk headers cyan). Coloring is automatically disabled when
+the output is redirected or piped, and honors --no-color / NO_COLOR, so piped
+output stays plain and byte-stable.`,
 		Example: `  # Compare installed pod default template against a saved candidate
   kubectl cwide template diff -r pod -t default --against-file ./candidate.yaml
 
@@ -82,7 +105,12 @@ tooling without worrying about spurious changes.`,
 				}
 			}
 
-			out := unifiedDiff(string(leftData), string(rightData), leftPath, rightLabel, 3)
+			// Colorize only for an interactive terminal so piped output stays
+			// byte-stable for tooling. funcs.ColorEnabled() folds in
+			// --no-color / NO_COLOR.
+			color := funcs.ColorEnabled() && isTerminal(cmd.OutOrStdout())
+
+			out := unifiedDiff(string(leftData), string(rightData), leftPath, rightLabel, 3, color)
 			if out == "" {
 				fmt.Fprintf(cmd.OutOrStdout(), "no differences: %s == %s\n", leftPath, rightLabel)
 				return nil
@@ -162,10 +190,16 @@ func loadBundledRecipe(spec string) ([]byte, error) {
 }
 
 // unifiedDiff produces a unified diff in the classic diff -u format, without
-// timestamps (byte-stable). Uses a straightforward LCS-based hunk builder;
-// avoids pulling in a full diff library for what's a small, human-facing
-// diagnostic. Return is empty string when a == b.
-func unifiedDiff(a, b, aLabel, bLabel string, context int) string {
+// timestamps. Uses a straightforward LCS-based hunk builder; avoids pulling in
+// a full diff library for what's a small, human-facing diagnostic. Return is
+// empty string when a == b.
+//
+// When color is false the output is byte-stable — identical inputs diff to
+// identical bytes, safe to pipe into tooling. When color is true (interactive
+// terminal, color not disabled) header/added/removed lines are wrapped in ANSI
+// codes for readability; callers must gate this on a TTY to preserve the
+// byte-stable contract for piped consumers.
+func unifiedDiff(a, b, aLabel, bLabel string, context int, color bool) string {
 	if a == b {
 		return ""
 	}
@@ -184,12 +218,21 @@ func unifiedDiff(a, b, aLabel, bLabel string, context int) string {
 	}
 
 	var out bytes.Buffer
-	fmt.Fprintf(&out, "--- %s\n", aLabel)
-	fmt.Fprintf(&out, "+++ %s\n", bLabel)
+	fmt.Fprintf(&out, "%s\n", colorize(color, "cyan", "--- "+aLabel))
+	fmt.Fprintf(&out, "%s\n", colorize(color, "cyan", "+++ "+bLabel))
 	for _, h := range hunks {
-		writeHunk(&out, h, aLines, bLines)
+		writeHunk(&out, h, aLines, bLines, color)
 	}
 	return out.String()
+}
+
+// colorize wraps s in the named ANSI color when enabled, delegating to the
+// shared funcs.Colorize so --no-color / NO_COLOR are honored consistently.
+func colorize(enabled bool, color, s string) string {
+	if !enabled {
+		return s
+	}
+	return funcs.Colorize(color, s)
 }
 
 // splitKeepNewline splits s on '\n' but preserves the trailing newline on each
@@ -388,37 +431,30 @@ func buildHunk(ops []diffOp) hunk {
 	return h
 }
 
-func writeHunk(w *bytes.Buffer, h hunk, aLines, bLines []string) {
-	fmt.Fprintf(w, "@@ -%d,%d +%d,%d @@\n", h.aStart, h.aCount, h.bStart, h.bCount)
+func writeHunk(w *bytes.Buffer, h hunk, aLines, bLines []string, color bool) {
+	header := fmt.Sprintf("@@ -%d,%d +%d,%d @@", h.aStart, h.aCount, h.bStart, h.bCount)
+	fmt.Fprintf(w, "%s\n", colorize(color, "cyan", header))
 	for _, op := range h.ops {
+		var prefix, text, clr string
 		switch op.kind {
 		case '=':
-			w.WriteByte(' ')
-			w.WriteString(aLines[op.aIdx])
+			prefix, text = " ", aLines[op.aIdx]
 		case '-':
-			w.WriteByte('-')
-			w.WriteString(aLines[op.aIdx])
+			prefix, text, clr = "-", aLines[op.aIdx], "red"
 		case '+':
-			w.WriteByte('+')
-			w.WriteString(bLines[op.bIdx])
+			prefix, text, clr = "+", bLines[op.bIdx], "green"
 		}
+		// The source line may carry a trailing newline; colorize the visible
+		// content only, keeping the reset code before the newline so terminals
+		// render cleanly and `patch(1)` still sees a plain leading +/-/space.
+		body := strings.TrimSuffix(text, "\n")
+		line := prefix + body
+		if color && clr != "" {
+			line = colorize(true, clr, line)
+		}
+		w.WriteString(line)
 		// Ensure hunk lines are newline-terminated even when the source line
 		// wasn't — makes the output parseable by `patch(1)`.
-		if !endsWithNewline(hunkLastByte(op, aLines, bLines)) {
-			w.WriteByte('\n')
-		}
+		w.WriteByte('\n')
 	}
-}
-
-func hunkLastByte(op diffOp, aLines, bLines []string) string {
-	switch op.kind {
-	case '=', '-':
-		return aLines[op.aIdx]
-	default:
-		return bLines[op.bIdx]
-	}
-}
-
-func endsWithNewline(s string) bool {
-	return len(s) > 0 && s[len(s)-1] == '\n'
 }
