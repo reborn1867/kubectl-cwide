@@ -259,6 +259,20 @@ type Column struct {
 	// IsTemplate marks this column's FieldSpec as a Go template expression,
 	// bypassing the IsTemplate() heuristic check.
 	IsTemplate bool
+	// LabelKey, when non-empty, makes this a label column (from
+	// --label-columns/-L): the cell renders the value of metadata.labels[LabelKey]
+	// (empty when absent). Bypasses JSONPath/template parsing so label keys
+	// containing dots or slashes (e.g. app.kubernetes.io/name) work verbatim.
+	LabelKey string
+	// ShowLabels, when true, makes this a single column (from --show-labels)
+	// rendering all of the object's labels as a sorted "k1=v1,k2=v2" string.
+	ShowLabels bool
+}
+
+// isLabelColumn reports whether the column is synthesized from
+// --label-columns / --show-labels rather than a JSONPath/template spec.
+func (c Column) isLabelColumn() bool {
+	return c.LabelKey != "" || c.ShowLabels
 }
 
 // CustomColumnPrinter is a printer that knows how to print arbitrary columns
@@ -333,6 +347,56 @@ func (s *CustomColumnsPrinter) SelectColumns(names []string) error {
 	return nil
 }
 
+// AppendLabelColumns adds label-derived columns to the printer, matching
+// kubectl's -L/--label-columns and --show-labels. One column is appended per
+// entry in labelKeys (header = the key verbatim), and if showLabels is true a
+// trailing LABELS column holding all labels is added. Must be called before
+// WithCustomTable, which snapshots the header row. Calling with no keys and
+// showLabels=false is a no-op.
+func (s *CustomColumnsPrinter) AppendLabelColumns(labelKeys []string, showLabels bool) {
+	for _, k := range labelKeys {
+		k = strings.TrimSpace(k)
+		if k == "" {
+			continue
+		}
+		s.Columns = append(s.Columns, Column{Header: k, LabelKey: k})
+		s.Headers = append(s.Headers, k)
+	}
+	if showLabels {
+		s.Columns = append(s.Columns, Column{Header: "LABELS", ShowLabels: true})
+		s.Headers = append(s.Headers, "LABELS")
+	}
+}
+
+// objectLabels pulls metadata.labels off any runtime.Object as a string map,
+// tolerating both typed and unstructured objects. Returns nil when there are
+// no labels or the accessor fails (treated as "no labels").
+func objectLabels(obj runtime.Object) map[string]string {
+	acc, err := meta.Accessor(obj)
+	if err != nil {
+		return nil
+	}
+	return acc.GetLabels()
+}
+
+// formatAllLabels renders a label map as kubectl's --show-labels does:
+// "k1=v1,k2=v2" with keys sorted. Empty map renders as "<none>".
+func formatAllLabels(labels map[string]string) string {
+	if len(labels) == 0 {
+		return "<none>"
+	}
+	keys := make([]string, 0, len(labels))
+	for k := range labels {
+		keys = append(keys, k)
+	}
+	sortStrings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+labels[k])
+	}
+	return strings.Join(parts, ",")
+}
+
 func (s *CustomColumnsPrinter) WithCustomTable() *CustomColumnsPrinter {
 	t := table.NewWriter()
 	t.SetOutputMirror(os.Stdout)
@@ -374,6 +438,13 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 
 	parsers := make([]parser.Parser, len(s.Columns))
 	for ix, col := range s.Columns {
+		// Label columns are resolved directly from metadata.labels in
+		// printOneObject; they need no JSONPath/template parser.
+		if col.isLabelColumn() {
+			parsers[ix] = parser.NewFieldParser()
+			continue
+		}
+
 		p := parser.NewFieldParser()
 		p.Header = col.Header
 		p.IsAGE = col.Header == "AGE"
@@ -453,7 +524,25 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 
 	t, _ := s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
 
+	// Resolve labels once per object; only computed when a label column exists.
+	var labels map[string]string
+	haveLabels := false
+
 	for ix := range parsers {
+		// Label columns bypass the field parser and read metadata.labels.
+		if ix < len(s.Columns) && s.Columns[ix].isLabelColumn() {
+			if !haveLabels {
+				labels = objectLabels(obj)
+				haveLabels = true
+			}
+			if s.Columns[ix].ShowLabels {
+				columns[ix] = formatAllLabels(labels)
+			} else {
+				columns[ix] = labels[s.Columns[ix].LabelKey]
+			}
+			continue
+		}
+
 		parser := parsers[ix]
 
 		col, err := parser.Parse(obj, t)
