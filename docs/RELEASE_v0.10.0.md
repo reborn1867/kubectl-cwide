@@ -18,7 +18,22 @@ in v0.8.0, so the remaining new work is items #7 and #8 plus the local
 | 7 | `get -w` change highlighting | `feat/watch-delta-highlight` | current main | ready; verified `go build`/`go test`/`go vet` green |
 | 8 | `get -L/--label-columns` + `--show-labels` | `feat/label-columns` | current main | ready; verify in CI |
 
-## Recommended merge order
+## Single integration branch (recommended path)
+
+All three feature branches have been pre-merged into **`integration/v0.10.0`**
+(off current `main`) — the three merges applied with **zero conflicts**. The
+combined diff is purely additive (18 files, ~+1589/−42) across `pkg/cmd/get`,
+`pkg/cmd/template`, and `pkg/parser/funcs`, with no phantom deletions.
+
+The get-path features compose correctly: in `printOneObject`, label-column
+values are computed before watch delta-decoration, and structured output
+(`RowSink`) still emits undecorated cells — verified by inspection.
+
+Easiest path to ship: open **one** PR from `integration/v0.10.0` → `main`, let
+CI verify the whole batch, and merge. (The per-branch PRs below remain a valid
+alternative if you prefer to review each feature separately.)
+
+## Recommended merge order (if landing branches individually)
 
 1. **`feat/watch-delta-highlight`** — self-contained; touches the watch path and
    adds `funcs.Colorize`/`ColorEnabled`. No overlap with the others.
