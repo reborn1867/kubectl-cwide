@@ -16,19 +16,19 @@ Reordering here reorders the loop.
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 1 | `template diff --against-file / --against-recipe` | T1 | M | in-progress | branch `feat/template-diff`. Local unified diff, no cluster contact. |
-| 2 | Land in-flight PRs (#31–34) | T4 | S | in-progress | scaffold-examples, metadata, lint-recursive, alias-conflict |
-| 3 | Cut v0.9.4 covering merged batch | T4 | S | todo | goreleaser tag after PR sweep lands |
+| 1 | `template diff --against-file / --against-recipe` | T1 | M | in-progress | branch `feat/template-diff` (verified, unmerged). Local unified diff, no cluster contact. Needs PR→main. |
+| 2 | Land in-flight PRs (#31–34) | T4 | S | done | scaffold-examples, metadata, lint-recursive, alias-conflict all on main |
+| 3 | Cut v0.9.4 covering merged batch | T4 | S | done | tag v0.9.4 pushed; goreleaser + krew release workflow ran |
 
 ## Milestone: v0.10.0 — power-user get
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 4 | `get --sort <col>` | T1 | M | todo | Reuses printer column data; stable Go sort keyed by rendered cell. |
-| 5 | `get --filter '<col><op><val>'` | T1 | M | todo | Small expr grammar over rendered cells. `==`, `!=`, `~=` (regex), numeric compare. |
-| 6 | `get -o json\|yaml\|csv` (template-driven) | T1 | M | todo | Same projection as the table, machine-readable. Blocks scripts. |
-| 7 | `get -w` with delta highlight | T1 | M | todo | ANSI color on cells that changed since previous tick. |
-| 8 | `--label-columns=...` / `--show-labels` | T2 | S | todo | kubectl parity; no template edit needed. |
+| 4 | `get --sort <col>` | T1 | M | done | shipped as `--sort-by` (v0.8.0). |
+| 5 | `get --filter '<col><op><val>'` | T1 | M | done | shipped as `--filter` with `=`/`!=`/`~`/`!~` (v0.8.0). |
+| 6 | `get -o json\|yaml\|csv` (template-driven) | T1 | M | done | shipped: `csv`, `template-json`, `template-yaml` (v0.8.0). |
+| 7 | `get -w` with delta highlight | T1 | M | in-progress | branch `feat/watch-delta-highlight` (verified green, unmerged). Needs PR→main. |
+| 8 | `--label-columns=...` / `--show-labels` | T2 | S | todo | kubectl parity; no template edit needed. NEXT TODO. |
 
 ## Milestone: v0.11.0 — introspection and composition
 
