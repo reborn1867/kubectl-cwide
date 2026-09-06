@@ -13,7 +13,7 @@ columns:
   - header: NODE
     template: |
       {{- $pv := lookup "v1" "PersistentVolume" "" .spec.volumeName -}}
-      {{- if $pv -}}
+      {{- if and $pv $pv.spec.nodeAffinity -}}
         {{- range $pv.spec.nodeAffinity.required.nodeSelectorTerms -}}
           {{- range .matchExpressions -}}
             {{- if eq .key "kubernetes.io/hostname" -}}{{ index .values 0 }}{{- end -}}
