@@ -766,6 +766,11 @@ kubectl cwide get core
 
 This lists pods, services, and configmaps in one call.
 
+> **Note:** group aliases are for the bare `TYPE` form only. Don't combine a
+> group alias with a `TYPE/NAME` selector (e.g. `get core/foo`) — a single name
+> can't apply across multiple kinds, and the `/NAME` suffix would bind only to
+> the last kind in the group. Use a single-kind alias for `TYPE/NAME` lookups.
+
 #### Cluster-scoped alias sync
 
 Share aliases across a team by riding along on the templates ConfigMap. A reserved data key `__aliases__` stores the YAML-marshaled alias map.
