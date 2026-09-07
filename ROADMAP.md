@@ -16,19 +16,23 @@ Reordering here reorders the loop.
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 1 | `template diff --against-file / --against-recipe` | T1 | M | in-progress | branch `feat/template-diff`. Local unified diff, no cluster contact. |
-| 2 | Land in-flight PRs (#31–34) | T4 | S | in-progress | scaffold-examples, metadata, lint-recursive, alias-conflict |
-| 3 | Cut v0.9.4 covering merged batch | T4 | S | todo | goreleaser tag after PR sweep lands |
+| 1 | `template diff --against-file / --against-recipe` | T1 | M | in-progress | branch `feat/template-diff` (rebased on main, colorized, scaffold nil-guard fixed). Local unified diff, no cluster contact. Awaiting PR→main. |
+| 2 | Land in-flight PRs (#31–34) | T4 | S | done | scaffold-examples, metadata, lint-recursive, alias-conflict all merged to main |
+| 3 | Cut v0.9.4 covering merged batch | T4 | S | done | tag v0.9.4 pushed; goreleaser + krew-release-bot ran. Also shipped the init template-erasure fix. |
 
 ## Milestone: v0.10.0 — power-user get
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 4 | `get --sort <col>` | T1 | M | todo | Reuses printer column data; stable Go sort keyed by rendered cell. |
-| 5 | `get --filter '<col><op><val>'` | T1 | M | todo | Small expr grammar over rendered cells. `==`, `!=`, `~=` (regex), numeric compare. |
-| 6 | `get -o json\|yaml\|csv` (template-driven) | T1 | M | todo | Same projection as the table, machine-readable. Blocks scripts. |
-| 7 | `get -w` with delta highlight | T1 | M | todo | ANSI color on cells that changed since previous tick. |
-| 8 | `--label-columns=...` / `--show-labels` | T2 | S | todo | kubectl parity; no template edit needed. |
+| 4 | `get --sort <col>` | T1 | M | done | shipped as `--sort-by` in v0.8.0. |
+| 5 | `get --filter '<col><op><val>'` | T1 | M | done | shipped as `--filter` (`=`/`!=`/`~`/`!~`) in v0.8.0. Operator-split bug fixed on branch `fix/filter-earliest-operator` (awaiting PR). |
+| 6 | `get -o json\|yaml\|csv` (template-driven) | T1 | M | done | shipped as `csv`/`template-json`/`template-yaml` in v0.8.0. |
+| 7 | `get -w` with delta highlight | T1 | M | in-progress | branch `feat/watch-delta-highlight` (compiler-verified green). Awaiting PR→main. |
+| 8 | `--label-columns=...` / `--show-labels` | T2 | S | in-progress | branch `feat/label-columns` (inspection-verified). Awaiting PR→main. |
+
+> **Landing note:** items 1, 7, 8 are pre-merged conflict-free into branch
+> `integration/v0.10.0` — one PR ships the whole v0.10.0 batch. See
+> `docs/RELEASE_v0.10.0.md`.
 
 ## Milestone: v0.11.0 — introspection and composition
 
@@ -63,7 +67,7 @@ Reordering here reorders the loop.
 |---|------|------|--------|--------|-------|
 | 21 | Renderer benchmark suite | T4 | S | todo | `go test -bench` for the printer over a synthetic 10k-object list. |
 | 22 | Fuzz JSONPath + text/template path | T4 | M | todo | `go test -fuzz`; guards the highest-blast-radius surface. |
-| 23 | Krew-index PR from release workflow | T4 | S | todo | Auto-open the krew-index PR when a tag is cut. |
+| 23 | Krew-index PR from release workflow | T4 | S | done | already implemented — `.github/workflows/release.yml` runs `rajatjindal/krew-release-bot` on each `v*.*.*` tag. |
 | 24 | Coverage floor in CI | T4 | S | todo | Fail CI below 60% package coverage. |
 
 ## Working order
@@ -71,6 +75,10 @@ Reordering here reorders the loop.
 The loop pulls items top-to-bottom within a milestone, then across
 milestones. Anything `blocked` is skipped with a comment on why. `done`
 items stay for history — do not delete.
+
+**Next actionable `todo`:** #9 `explain <template>/<alias>` (v0.11.0). Items
+1/7/8 are code-complete on branches awaiting PRs (not new work); 2/3/4/5/6/23
+are done. So the first item requiring fresh implementation is #9.
 
 ## How to steer
 
