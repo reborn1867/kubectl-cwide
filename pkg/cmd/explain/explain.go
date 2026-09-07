@@ -15,6 +15,7 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/common"
 	"github.com/kubectl-cwide/pkg/models"
 	"github.com/kubectl-cwide/pkg/utils"
@@ -101,6 +102,19 @@ legacy config format, and any bound templates.`,
 
 	cmd.Flags().StringVarP(&resource, "resource", "r", "", "Resource type to locate the template under (e.g. pod, deployment)")
 	cmd.Flags().StringVarP(&output, "output", "o", "", "Output format: empty (human) or one of yaml, json")
+
+	_ = cmd.RegisterFlagCompletionFunc("resource", completions.ResourceTypes)
+	_ = cmd.RegisterFlagCompletionFunc("output", cobra.FixedCompletions(
+		[]string{"yaml", "json"}, cobra.ShellCompDirectiveNoFileComp))
+	// The positional arg may be an alias or a template name; alias names are the
+	// cheap, cluster-free completion source (template names need -r context).
+	cmd.ValidArgsFunction = func(c *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+		if len(args) >= 1 {
+			return nil, cobra.ShellCompDirectiveNoFileComp
+		}
+		return completions.AliasNames(c, args, toComplete)
+	}
+
 	return cmd
 }
 
