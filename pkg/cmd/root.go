@@ -9,6 +9,7 @@ import (
 	"github.com/kubectl-cwide/pkg/cmd/completion"
 	"github.com/kubectl-cwide/pkg/cmd/config"
 	configmapCmd "github.com/kubectl-cwide/pkg/cmd/configmap"
+	"github.com/kubectl-cwide/pkg/cmd/explain"
 	"github.com/kubectl-cwide/pkg/cmd/get"
 	"github.com/kubectl-cwide/pkg/parser/funcs"
 	"github.com/kubectl-cwide/pkg/cmd/initialization"
@@ -53,6 +54,7 @@ display resources using those templates.`,
 	cmd.AddCommand(configmapCmd.NewCmdConfigMap())
 	cmd.AddCommand(tree.NewCmdTree(streams))
 	cmd.AddCommand(alias.NewCmdAlias())
+	cmd.AddCommand(explain.NewCmdExplain())
 	cmd.AddCommand(completion.NewCmdCompletion())
 
 	// Passthrough verbs (annotate/edit/label/delete/describe/apply/logs/exec/
