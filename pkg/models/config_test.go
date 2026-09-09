@@ -50,3 +50,49 @@ func TestResolveAliasTemplate_UnboundAliasReturnsEmpty(t *testing.T) {
 		t.Errorf("missing alias should have no template; got %q", got)
 	}
 }
+
+func TestResolveDefaultTemplate_Precedence(t *testing.T) {
+	c := &Config{
+		DefaultTemplateContext:   map[string]string{"prod": "compact", "dev": "verbose"},
+		DefaultTemplateNamespace: map[string]string{"kube-system": "minimal", "monitoring": "full"},
+	}
+	cases := []struct {
+		name    string
+		kubeCtx string
+		ns      string
+		want    string
+	}{
+		{"namespace beats context", "prod", "kube-system", "minimal"},
+		{"context used when namespace has no override", "prod", "default", "compact"},
+		{"context-only match", "dev", "", "verbose"},
+		{"namespace-only match", "", "monitoring", "full"},
+		{"no match falls back to default", "staging", "team-x", "default"},
+		{"empty inputs fall back to default", "", "", "default"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := c.ResolveDefaultTemplate(tc.kubeCtx, tc.ns); got != tc.want {
+				t.Errorf("ResolveDefaultTemplate(%q, %q) = %q, want %q", tc.kubeCtx, tc.ns, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestResolveDefaultTemplate_EmptyStringOverrideIgnored(t *testing.T) {
+	// A map entry present but set to "" must not shadow the fallback — the
+	// implementation guards with `t != ""`.
+	c := &Config{
+		DefaultTemplateNamespace: map[string]string{"ns": ""},
+		DefaultTemplateContext:   map[string]string{"ctx": ""},
+	}
+	if got := c.ResolveDefaultTemplate("ctx", "ns"); got != "default" {
+		t.Errorf("empty-string overrides should be ignored; got %q", got)
+	}
+}
+
+func TestResolveDefaultTemplate_NilMaps(t *testing.T) {
+	c := &Config{}
+	if got := c.ResolveDefaultTemplate("prod", "kube-system"); got != "default" {
+		t.Errorf("nil maps should yield default; got %q", got)
+	}
+}
