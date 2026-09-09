@@ -64,6 +64,9 @@ type GetOptions struct {
 	Output            string
 	SortColumn        string
 	FilterExprs       []string
+	// ExplainEmpty, when set to a column header, diagnoses why that column
+	// rendered empty for each object (see --explain-empty).
+	ExplainEmpty string
 
 	factory cmdutil.Factory
 	args    []string
@@ -344,6 +347,12 @@ func (o *GetOptions) list() error {
 		printer.CustomTable.Render()
 	} else {
 		w.Flush()
+	}
+
+	if o.ExplainEmpty != "" {
+		if err := o.explainEmptyColumn(printer, infos); err != nil {
+			return err
+		}
 	}
 
 	return nil
@@ -848,6 +857,7 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 		cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().StringVar(&o.SortColumn, "sort-by", "", "Column header to sort rows by (case-insensitive). Numeric strings sort numerically.")
 	cmd.Flags().StringArrayVar(&o.FilterExprs, "filter", nil, "Filter rows by column values: COL=val, COL!=val, COL~regex, COL!~regex (repeatable, ANDed).")
+	cmd.Flags().StringVar(&o.ExplainEmpty, "explain-empty", "", "Diagnose why the named column renders empty (prints the JSONPath tried, resolved prefix, available keys, and a nearest-key hint to stderr).")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
 	_ = cmd.RegisterFlagCompletionFunc("context", completions.KubeContexts)
