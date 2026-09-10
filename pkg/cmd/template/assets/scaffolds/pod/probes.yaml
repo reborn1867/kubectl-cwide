@@ -1,0 +1,12 @@
+# Live-fire each pod's readiness / liveness / startup probes through the API
+# server proxy. Each row triggers one HTTP request per probe kind, so keep
+# to interactive namespaces — don't run this under --watch across the cluster.
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: READINESS
+    template: '{{ probeCheck . "readiness" }}'
+  - header: LIVENESS
+    template: '{{ probeCheck . "liveness" }}'
+  - header: STARTUP
+    template: '{{ probeCheck . "startup" }}'

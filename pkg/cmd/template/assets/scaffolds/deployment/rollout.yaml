@@ -1,0 +1,14 @@
+# Ready-vs-desired at a glance during a rollout.
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: READY
+    fieldSpec: .status.readyReplicas
+  - header: UPDATED
+    fieldSpec: .status.updatedReplicas
+  - header: AVAILABLE
+    fieldSpec: .status.availableReplicas
+  - header: UNAVAILABLE
+    fieldSpec: .status.unavailableReplicas
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp
