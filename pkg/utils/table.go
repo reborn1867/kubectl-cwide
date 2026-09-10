@@ -81,6 +81,31 @@ func (h *DefaultTableGenerator) ResourceColumnDefinition(kind string) []metav1.T
 	return handler.columnDefinitions
 }
 
+// ResourceColumnDefinitionFiltered returns the column definitions for a kind,
+// optionally dropping wide-only columns. When wide is false, columns with a
+// non-zero Priority (the ones kubectl only shows under `-o wide`, e.g. a pod's
+// IP/NODE/NOMINATED NODE/READINESS GATES) are excluded, so a default template
+// built from these matches plain `kubectl get <resource>` output. When wide is
+// true, all columns are returned. Mirrors the Priority filtering GenerateTable
+// applies at render time.
+func (h *DefaultTableGenerator) ResourceColumnDefinitionFiltered(kind string, wide bool) []metav1.TableColumnDefinition {
+	handler, ok := h.handlerMapByKind[kind]
+	if !ok {
+		return nil
+	}
+	if wide {
+		return handler.columnDefinitions
+	}
+	cols := make([]metav1.TableColumnDefinition, 0, len(handler.columnDefinitions))
+	for i := range handler.columnDefinitions {
+		if handler.columnDefinitions[i].Priority != 0 {
+			continue
+		}
+		cols = append(cols, handler.columnDefinitions[i])
+	}
+	return cols
+}
+
 // With method - accepts a list of builder functions that modify HumanReadableGenerator
 func (h *DefaultTableGenerator) With(fns ...func(printers.PrintHandler)) *DefaultTableGenerator {
 	for _, fn := range fns {
