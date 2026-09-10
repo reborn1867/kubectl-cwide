@@ -136,27 +136,43 @@ type filterPredicate struct {
 }
 
 func parseFilterExpr(expr string, headerIdx map[string]int) (filterPredicate, error) {
-	// Order matters: match longer operators first.
+	// Split on the *earliest-occurring* operator so an operator character in
+	// the value (e.g. COL=a!=b, or a regex like LABELS~app=web) doesn't get
+	// mistaken for the separator. The column name comes first and does not
+	// contain operator characters, so the left-most operator is the separator.
+	// At the same position, prefer the longest operator ("!=" over "=",
+	// "!~" over "~") so two-character operators aren't split as one.
+	bestPos := -1
+	bestOp := ""
 	for _, op := range []string{"!~", "!=", "==", "~", "="} {
-		if i := strings.Index(expr, op); i > 0 {
-			col := strings.TrimSpace(expr[:i])
-			val := expr[i+len(op):]
-			idx, ok := headerIdx[strings.ToUpper(col)]
-			if !ok {
-				return filterPredicate{}, fmt.Errorf("unknown column %q in filter %q", col, expr)
-			}
-			p := filterPredicate{colIdx: idx, op: op, value: val}
-			if op == "~" || op == "!~" {
-				re, err := regexp.Compile(val)
-				if err != nil {
-					return filterPredicate{}, fmt.Errorf("bad regex in filter %q: %w", expr, err)
-				}
-				p.re = re
-			}
-			return p, nil
+		i := strings.Index(expr, op)
+		if i <= 0 {
+			continue
+		}
+		if bestPos == -1 || i < bestPos || (i == bestPos && len(op) > len(bestOp)) {
+			bestPos = i
+			bestOp = op
 		}
 	}
-	return filterPredicate{}, fmt.Errorf("filter %q must contain =, ==, !=, ~, or !~", expr)
+	if bestPos == -1 {
+		return filterPredicate{}, fmt.Errorf("filter %q must contain =, ==, !=, ~, or !~", expr)
+	}
+
+	col := strings.TrimSpace(expr[:bestPos])
+	val := expr[bestPos+len(bestOp):]
+	idx, ok := headerIdx[strings.ToUpper(col)]
+	if !ok {
+		return filterPredicate{}, fmt.Errorf("unknown column %q in filter %q", col, expr)
+	}
+	p := filterPredicate{colIdx: idx, op: bestOp, value: val}
+	if bestOp == "~" || bestOp == "!~" {
+		re, err := regexp.Compile(val)
+		if err != nil {
+			return filterPredicate{}, fmt.Errorf("bad regex in filter %q: %w", expr, err)
+		}
+		p.re = re
+	}
+	return p, nil
 }
 
 // sortRows sorts rows in place by the named column. Numeric strings sort

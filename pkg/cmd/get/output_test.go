@@ -55,6 +55,62 @@ func TestFilterRowsUnknownColumn(t *testing.T) {
 	}
 }
 
+// TestParseFilterExpr_EarliestOperatorWins guards against splitting on an
+// operator that appears inside the value rather than the one separating the
+// column from the value. The separator is the left-most operator, since the
+// column name precedes it and contains no operator characters.
+func TestParseFilterExpr_EarliestOperatorWins(t *testing.T) {
+	idx := headerIndexMap([]string{"COL"})
+
+	// "=" is the separator at pos 3; the "!=" at pos 5 is part of the value.
+	p, err := parseFilterExpr("COL=a!=b", idx)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if p.op != "=" || p.value != "a!=b" {
+		t.Fatalf("got op=%q value=%q, want op=%q value=%q", p.op, p.value, "=", "a!=b")
+	}
+}
+
+// TestParseFilterExpr_LongestOperatorAtSamePosition ensures "==" and "!=" are
+// not split as the single-char "=" when they start at the same index.
+func TestParseFilterExpr_LongestOperatorAtSamePosition(t *testing.T) {
+	idx := headerIndexMap([]string{"COL"})
+
+	p, err := parseFilterExpr("COL==v", idx)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if p.op != "==" || p.value != "v" {
+		t.Fatalf("got op=%q value=%q, want op=%q value=%q", p.op, p.value, "==", "v")
+	}
+
+	p2, err := parseFilterExpr("COL!~re", idx)
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
+	if p2.op != "!~" {
+		t.Fatalf("got op=%q, want !~", p2.op)
+	}
+}
+
+// TestFilterRowsRegexValueWithEquals confirms a regex value containing '=' is
+// kept intact (the '~' separator precedes the '=').
+func TestFilterRowsRegexValueWithEquals(t *testing.T) {
+	headers := []string{"NAME", "LABELS"}
+	rows := [][]string{
+		{"a", "app=web,tier=front"},
+		{"b", "app=db"},
+	}
+	got, err := filterRows(headers, rows, []string{"LABELS~app=web"})
+	if err != nil {
+		t.Fatalf("filter err: %v", err)
+	}
+	if len(got) != 1 || got[0][0] != "a" {
+		t.Fatalf("regex value with '=' broken: %v", got)
+	}
+}
+
 func TestSortRowsNumeric(t *testing.T) {
 	headers := []string{"AGE"}
 	rows := [][]string{{"10"}, {"2"}, {"100"}}
