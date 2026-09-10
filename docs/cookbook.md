@@ -117,9 +117,20 @@ Job progress across attempts.
 `~/.kubectl-cwide/templates/job-batch-v1/attempts.tpl`:
 
 ```
-NAME             COMPLETIONS                                     SUCCEEDED                     FAILED                     ACTIVE                          START
-.metadata.name   .status.succeeded/.spec.completions             .status.succeeded             .status.failed             .status.active                  .status.startTime
+NAME             COMPLETIONS                       SUCCEEDED                     FAILED                     ACTIVE                          START
+.metadata.name   {{ template "JobCompletions" . }} .status.succeeded             .status.failed             .status.active                  .status.startTime
+
+{{- define "JobCompletions" -}}
+{{- $s := 0 -}}{{- if .status.succeeded -}}{{- $s = .status.succeeded -}}{{- end -}}
+{{- $c := "?" -}}{{- if .spec.completions -}}{{- $c = .spec.completions -}}{{- end -}}
+{{- printf "%v/%v" $s $c -}}
+{{- end -}}
 ```
+
+The `COMPLETIONS` column shows a `succeeded/desired` ratio. A bare
+`.status.succeeded/.spec.completions` does **not** work — in a `.tpl` column a
+field is a single JSONPath expression, and `/` is not a JSONPath operator, so
+the ratio must be built with a `text/template` block as above.
 
 ---
 
