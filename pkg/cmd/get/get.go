@@ -721,6 +721,25 @@ func splitResourceTokens(s string) []string {
 	return out
 }
 
+// objectsAreNamespaced reports whether the fetched objects belong to a
+// namespaced resource, by checking whether any carries a non-empty
+// metadata.namespace. Cluster-scoped resources (nodes, PVs, …) have none, so
+// no NAMESPACE column should be added for them even under --all-namespaces.
+func objectsAreNamespaced(infos []*resource.Info) bool {
+	for _, info := range infos {
+		if info == nil {
+			continue
+		}
+		if info.Namespace != "" {
+			return true
+		}
+		if acc, err := meta.Accessor(info.Object); err == nil && acc.GetNamespace() != "" {
+			return true
+		}
+	}
+	return false
+}
+
 func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinter, error) {
 	crdTemplateDir := utils.GenerateDirNameByGVK(infos[0].Object.GetObjectKind().GroupVersionKind())
 
@@ -749,6 +768,14 @@ func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinte
 	printer, err := resolveTemplatePrinter(o.TemplateRootPath, crdTemplateDir, tplName, decoder, restConfig)
 	if err != nil {
 		return nil, err
+	}
+
+	// With --all-namespaces, prepend a NAMESPACE column (leftmost) for
+	// namespaced resources, matching `kubectl get -A`. Cluster-scoped objects
+	// carry no namespace, so we key off whether the fetched objects actually
+	// have one rather than re-resolving scope.
+	if o.AllNamespaces && objectsAreNamespaced(infos) {
+		printer.WithNamespaceColumn()
 	}
 
 	if len(o.Columns) > 0 {

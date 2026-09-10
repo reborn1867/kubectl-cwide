@@ -280,6 +280,22 @@ type CustomColumnsPrinter struct {
 	RowSink func(cols []string)
 }
 
+// WithNamespaceColumn prepends a NAMESPACE column that reads
+// .metadata.namespace, matching `kubectl get -A` which shows the namespace as
+// the leftmost column. No-op if a NAMESPACE column already exists (so it's safe
+// to call unconditionally). Must be called before WithCustomTable, which
+// snapshots the header row.
+func (s *CustomColumnsPrinter) WithNamespaceColumn() {
+	for _, c := range s.Columns {
+		if strings.EqualFold(c.Header, "NAMESPACE") {
+			return
+		}
+	}
+	nsCol := Column{Header: "NAMESPACE", FieldSpec: "{.metadata.namespace}"}
+	s.Columns = append([]Column{nsCol}, s.Columns...)
+	s.Headers = append([]string{"NAMESPACE"}, s.Headers...)
+}
+
 // SelectColumns filters the printer's Columns/Headers to the named subset,
 // preserving the order given in `names`. Names are matched case-insensitively
 // against Column.Header. Unknown names are reported as an error.
@@ -407,6 +423,19 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 	return nil
 }
 
+// needsDefaultPrinter reports whether any column renders via kubectl's default
+// printer ($_defaultPrinterField), in either the bare or brace-wrapped form.
+// When false, printOneObject skips building the default table entirely.
+func (s *CustomColumnsPrinter) needsDefaultPrinter() bool {
+	for _, c := range s.Columns {
+		if c.FieldSpec == common.DefaultPrinterField ||
+			c.FieldSpec == fmt.Sprintf("{.%s}", common.DefaultPrinterField) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []parser.Parser, out io.Writer) error {
 	columns := make([]string, len(parsers))
 	switch u := obj.(type) {
@@ -434,7 +463,13 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		}
 	}
 
-	t, _ := s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
+	// Only build the default-printer table when a column actually needs it.
+	// Avoids per-object work for pure JSONPath/template templates and lets the
+	// printer run without a DefaultTableGenerator (e.g. RowSink capture).
+	var t *metav1.Table
+	if s.needsDefaultPrinter() {
+		t, _ = s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
+	}
 
 	for ix := range parsers {
 		parser := parsers[ix]
