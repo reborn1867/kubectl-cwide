@@ -495,6 +495,19 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 	return nil
 }
 
+// needsDefaultPrinter reports whether any column renders via kubectl's default
+// printer ($_defaultPrinterField), in either the bare or brace-wrapped form.
+// When false, printOneObject can skip building the default table entirely.
+func (s *CustomColumnsPrinter) needsDefaultPrinter() bool {
+	for _, c := range s.Columns {
+		if c.FieldSpec == common.DefaultPrinterField ||
+			c.FieldSpec == fmt.Sprintf("{.%s}", common.DefaultPrinterField) {
+			return true
+		}
+	}
+	return false
+}
+
 func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []parser.Parser, out io.Writer) error {
 	columns := make([]string, len(parsers))
 	switch u := obj.(type) {
@@ -522,7 +535,14 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		}
 	}
 
-	t, _ := s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
+	// Only build the default-printer table when a column actually needs it.
+	// This avoids per-object work for pure JSONPath/template/label templates and
+	// lets the printer run without a DefaultTableGenerator (e.g. structured
+	// output via RowSink).
+	var t *metav1.Table
+	if s.needsDefaultPrinter() {
+		t, _ = s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
+	}
 
 	// Resolve labels once per object; only computed when a label column exists.
 	var labels map[string]string
