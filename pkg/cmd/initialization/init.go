@@ -146,7 +146,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 			version = groupVersion[0]
 		}
 		for _, resource := range resourceList.APIResources {
-			colDefinition := tableGenerator.ResourceColumnDefinition(strings.ToLower(resource.Kind))
+			// Use the non-wide column set so the generated default template
+			// matches plain `kubectl get <resource>` (not `-o wide`). Users
+			// can still add wide columns like IP/NODE by editing the template.
+			colDefinition := tableGenerator.ResourceColumnDefinitionFiltered(strings.ToLower(resource.Kind), false)
 			if len(colDefinition) != 0 {
 				defaultResourceTemplateDir := filepath.Join(path, utils.GenerateDirNameByGVK(schema.GroupVersionKind{
 					Group:   group,

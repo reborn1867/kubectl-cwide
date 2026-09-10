@@ -208,37 +208,53 @@ kubectl cwide template list -r pod
 ```
 
 ### Customization on Default Kubernetes Objects
-For default k8s objects, kubectl-cwide generates a special template with mark `$_defaultPrinterField` to indicate that the column is printed by default printer of kubectl. You are free to build your customized output by appending new column, rearrange columns order or redo the whole output from scratch. 
+For default k8s objects, kubectl-cwide generates a special template with mark `$_defaultPrinterField` to indicate that the column is printed by default printer of kubectl. You are free to build your customized output by appending new column, rearrange columns order or redo the whole output from scratch.
+
+The generated default template uses **exactly the columns `kubectl get <resource>` shows** — the standard (non-`-o wide`) set. So `kubectl cwide get pod` matches `kubectl get pod` out of the box, unless you pass a different template with `-t`.
 
 e.g.
 ```
-cat /tmp/cwide/pod--v1/default.tpl
-NAME                  READY                 STATUS                RESTARTS              AGE                   IP                    NODE                  NOMINATED_NODE        READINESS_GATES
-$_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField
+cat /tmp/cwide/pod--v1/default.yaml
+columns:
+  - header: NAME
+    fieldSpec: $_defaultPrinterField
+  - header: READY
+    fieldSpec: $_defaultPrinterField
+  - header: STATUS
+    fieldSpec: $_defaultPrinterField
+  - header: RESTARTS
+    fieldSpec: $_defaultPrinterField
+  - header: AGE
+    fieldSpec: $_defaultPrinterField
 ```
 
-Using default template for output rendering, it would look the same as kubectl get output.
+Using the default template, the output matches `kubectl get pod`:
 ```
 kubectl cwide get pod
-NAME                                            READY   STATUS      RESTARTS   AGE     IP       NODE                                                    NOMINATED_NODE   READINESS_GATES
-fluentd-wx98t                                   1/1     Running     0          24m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-76dzv
-fluentd-x55zk                                   1/1     Running     0          25m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-k7s7x
-grafana-7475f448db-49zn9                        2/2     Running     0          4d23h   <none>   shoot--di-demo--di-dmo-gcp-reg-default-z3-6ffc9-99nkz
+NAME                       READY   STATUS    RESTARTS   AGE
+fluentd-wx98t              1/1     Running   0          24m
+fluentd-x55zk              1/1     Running   0          25m
+grafana-7475f448db-49zn9   2/2     Running   0          4d23h
 ```
 
-If you want to remove columns `NOMINATED_NODE` and `READINESS_GATES` which you don't care, and add a new column for images, the template would be modified like this:
-```
-NAME                  READY                 STATUS                RESTARTS              AGE                   IP                    NODE                  IMAGES
-$_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField $_defaultPrinterField .spec.containers[*].image
+The wide-only columns (`IP`, `NODE`, `NOMINATED NODE`, `READINESS GATES` for
+pods) are intentionally left out of the default so parity holds. To get the
+`-o wide` view, add them yourself — plus, say, an `IMAGES` column:
+```yaml
+columns:
+  - {header: NAME, fieldSpec: $_defaultPrinterField}
+  - {header: READY, fieldSpec: $_defaultPrinterField}
+  - {header: STATUS, fieldSpec: $_defaultPrinterField}
+  - {header: RESTARTS, fieldSpec: $_defaultPrinterField}
+  - {header: AGE, fieldSpec: $_defaultPrinterField}
+  - {header: IP, fieldSpec: $_defaultPrinterField}
+  - {header: NODE, fieldSpec: $_defaultPrinterField}
+  - {header: IMAGES, fieldSpec: .spec.containers[*].image}
 ```
 
-And the output would be as following
-```
-NAME                                            READY   STATUS    RESTARTS   AGE     IP       NODE                                                    IMAGES
-fluentd-wx98t                                   1/1     Running   0          37m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-76dzv   fluent/fluentd:v1.16
-fluentd-x55zk                                   1/1     Running   0          39m     <none>   shoot--di-demo--di-dmo-gcp-reg-default-z1-56f44-k7s7x   fluent/fluentd:v1.16
-grafana-7475f448db-49zn9                        2/2     Running   0          4d23h   <none>   shoot--di-demo--di-dmo-gcp-reg-default-z3-6ffc9-99nkz   grafana/grafana:11.5.4
-```
+`$_defaultPrinterField` still resolves the wide columns (`IP`, `NODE`) because
+cwide renders against kubectl's wide table under the hood — it just doesn't list
+them by default.
 
 ### Editing Templates
 
