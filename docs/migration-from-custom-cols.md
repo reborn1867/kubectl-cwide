@@ -29,7 +29,10 @@ NAME     STATUS         AGE
 .metadata.name   .status.phase   .metadata.creationTimestamp
 ```
 
-Identical body — just the location changes. In cwide, `pod--v1` is `<resource>-<group>-<version>` where the empty group leaves a doubled dash.
+Identical body — just the location changes. In cwide, `pod--v1` is
+`<kind>-<group>-<version>` lowercased, where the empty core group leaves a
+doubled dash. Note it's the singular **Kind** (`pod`, `service`, `deployment`),
+not the plural resource name.
 
 ### Selecting a template variant
 
@@ -48,7 +51,12 @@ kubectl cwide get pod --template original-output
    mkdir -p ~/.kubectl-cwide/templates/pod--v1
    cp ~/.custom-cols/pod ~/.kubectl-cwide/templates/pod--v1/default.tpl
    ```
-   Repeat for each kind. The rule for the directory name is `<plural>-<group>-<version>` (built-ins have an empty group — hence `pod--v1`, `service--v1`, `configmap--v1`, `deployment-apps-v1`, `job-batch-v1`, etc.).
+   Repeat for each kind. The rule for the directory name is
+   `<kind>-<group>-<version>`, lowercased, using the singular **Kind** (not the
+   plural resource) — built-ins have an empty group, hence `pod--v1`,
+   `service--v1`, `configmap--v1`, `deployment-apps-v1`, `job-batch-v1`, etc.
+   (Easiest is to let `kubectl cwide init` create the directories first, then
+   drop your files in.)
 
 2. **Init to fill in the rest**. Once you've copied your bespoke templates, run:
    ```sh
