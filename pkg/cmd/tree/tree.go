@@ -298,7 +298,7 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 		}
 	}
 
-	RenderTree(rootNode, o.Out, o.MaxDepth)
+	RenderTree(rootNode, o.Out, o.MaxDepth, o.AllNamespaces)
 	return nil
 }
 

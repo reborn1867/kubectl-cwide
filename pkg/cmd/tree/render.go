@@ -13,15 +13,17 @@ import (
 
 // RenderTree prints the tree to out using Unicode box-drawing characters.
 // maxDepth <= 0 means unbounded. Cycles (revisits of the same UID) are broken
-// with a "(cycle)" marker so the walk always terminates.
-func RenderTree(root *TreeNode, out io.Writer, maxDepth int) {
-	t := treeprint.NewWithRoot(formatNode(root))
+// with a "(cycle)" marker so the walk always terminates. When showNamespace is
+// true (e.g. under --all-namespaces), each node is prefixed with its namespace
+// so cross-namespace trees aren't ambiguous.
+func RenderTree(root *TreeNode, out io.Writer, maxDepth int, showNamespace bool) {
+	t := treeprint.NewWithRoot(formatNode(root, showNamespace))
 	visited := map[types.UID]bool{root.UID: true}
-	addChildren(t, root, visited, 1, maxDepth)
+	addChildren(t, root, visited, 1, maxDepth, showNamespace)
 	fmt.Fprint(out, t.String())
 }
 
-func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bool, depth, maxDepth int) {
+func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bool, depth, maxDepth int, showNamespace bool) {
 	if maxDepth > 0 && depth > maxDepth {
 		if len(node.Children) > 0 {
 			branch.AddNode(fmt.Sprintf("... (%d more, --max-depth=%d)", len(node.Children), maxDepth))
@@ -30,37 +32,44 @@ func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bo
 	}
 	for _, child := range node.Children {
 		if child.UID != "" && visited[child.UID] {
-			branch.AddNode(formatNode(child) + "  (cycle)")
+			branch.AddNode(formatNode(child, showNamespace) + "  (cycle)")
 			continue
 		}
 		if child.UID != "" {
 			visited[child.UID] = true
 		}
 		if len(child.Children) > 0 {
-			sub := branch.AddBranch(formatNode(child))
-			addChildren(sub, child, visited, depth+1, maxDepth)
+			sub := branch.AddBranch(formatNode(child, showNamespace))
+			addChildren(sub, child, visited, depth+1, maxDepth, showNamespace)
 		} else {
-			branch.AddNode(formatNode(child))
+			branch.AddNode(formatNode(child, showNamespace))
 		}
 	}
 }
 
-// formatNode produces the display string for a tree line: Kind/name  status  age
-func formatNode(node *TreeNode) string {
+// formatNode produces the display string for a tree line: Kind/name  status age.
+// When showNamespace is true and the node is namespaced, the name is prefixed
+// with "namespace/" so cross-namespace output is unambiguous.
+func formatNode(node *TreeNode, showNamespace bool) string {
 	kind := node.GVK.Kind
 	status := summarizeStatus(node.Object)
 	age := resourceAge(node.Object)
 
+	name := node.Name
+	if showNamespace && node.Namespace != "" {
+		name = node.Namespace + "/" + node.Name
+	}
+
 	if status != "" && age != "" {
-		return fmt.Sprintf("%s/%s  %s  %s", kind, node.Name, status, age)
+		return fmt.Sprintf("%s/%s  %s  %s", kind, name, status, age)
 	}
 	if status != "" {
-		return fmt.Sprintf("%s/%s  %s", kind, node.Name, status)
+		return fmt.Sprintf("%s/%s  %s", kind, name, status)
 	}
 	if age != "" {
-		return fmt.Sprintf("%s/%s  %s", kind, node.Name, age)
+		return fmt.Sprintf("%s/%s  %s", kind, name, age)
 	}
-	return fmt.Sprintf("%s/%s", kind, node.Name)
+	return fmt.Sprintf("%s/%s", kind, name)
 }
 
 // summarizeStatus extracts a compact status string from the object.

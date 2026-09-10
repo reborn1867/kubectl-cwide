@@ -101,7 +101,7 @@ func TestFormatNode(t *testing.T) {
 		}},
 	}
 
-	result := formatNode(node)
+	result := formatNode(node, false)
 	if !strings.HasPrefix(result, "Deployment/nginx") {
 		t.Errorf("expected prefix 'Deployment/nginx', got: %s", result)
 	}
@@ -110,6 +110,34 @@ func TestFormatNode(t *testing.T) {
 	}
 	if !strings.Contains(result, "10m") {
 		t.Errorf("expected age ~'10m' in output, got: %s", result)
+	}
+}
+
+// TestFormatNode_ShowNamespace verifies that under --all-namespaces the node
+// label is prefixed with the namespace, and that a node without a namespace
+// (cluster-scoped) is left unprefixed even when showNamespace is set.
+func TestFormatNode_ShowNamespace(t *testing.T) {
+	nsNode := &TreeNode{
+		GVK:       schema.GroupVersionKind{Kind: "Pod"},
+		Name:      "web-1",
+		Namespace: "prod",
+		Object:    &unstructured.Unstructured{Object: map[string]interface{}{}},
+	}
+	if got := formatNode(nsNode, true); !strings.HasPrefix(got, "Pod/prod/web-1") {
+		t.Errorf("expected 'Pod/prod/web-1' prefix with showNamespace, got: %s", got)
+	}
+	// Without showNamespace the namespace must not appear.
+	if got := formatNode(nsNode, false); !strings.HasPrefix(got, "Pod/web-1") {
+		t.Errorf("expected 'Pod/web-1' (no namespace) without showNamespace, got: %s", got)
+	}
+	// Cluster-scoped node (no namespace) stays unprefixed even with showNamespace.
+	clusterNode := &TreeNode{
+		GVK:    schema.GroupVersionKind{Kind: "Node"},
+		Name:   "node-a",
+		Object: &unstructured.Unstructured{Object: map[string]interface{}{}},
+	}
+	if got := formatNode(clusterNode, true); !strings.HasPrefix(got, "Node/node-a") {
+		t.Errorf("cluster-scoped node should have no namespace prefix, got: %s", got)
 	}
 }
 
@@ -155,7 +183,7 @@ func TestRenderTree(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	RenderTree(root, &buf, 0)
+	RenderTree(root, &buf, 0, false)
 	output := buf.String()
 
 	// Verify structure
