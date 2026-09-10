@@ -1,6 +1,7 @@
 package get
 
 import (
+	"io"
 	"strings"
 	"testing"
 
@@ -110,7 +111,7 @@ func TestLabelColumns_EndToEnd(t *testing.T) {
 	p.AppendLabelColumns([]string{"app", "missing"}, true)
 
 	obj := newPodWithLabels("web-1", map[string]string{"app": "web"})
-	if err := p.PrintObj(obj, nil); err != nil {
+	if err := p.PrintObj(obj, io.Discard); err != nil {
 		t.Fatalf("PrintObj: %v", err)
 	}
 	if len(rows) != 1 {
