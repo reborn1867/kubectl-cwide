@@ -45,9 +45,13 @@ func ResourceTypes(cmd *cobra.Command, args []string, toComplete string) ([]stri
 		out = append(out, s)
 	}
 
-	// Aliases first — they're small and free to load.
+	// Aliases first — they're small and free to load. Cover both the legacy
+	// Aliases map and the rich AliasEntries map (add() dedupes).
 	if cfg, err := utils.LoadConfig(); err == nil {
 		for name := range cfg.Aliases {
+			add(name)
+		}
+		for name := range cfg.AliasEntries {
 			add(name)
 		}
 	} else {
@@ -101,9 +105,22 @@ func AliasNames(cmd *cobra.Command, args []string, toComplete string) ([]string,
 	if err != nil {
 		return nil, cobra.ShellCompDirectiveNoFileComp
 	}
-	names := make([]string, 0, len(cfg.Aliases))
+	// Union of both alias stores: the legacy Aliases map and the rich
+	// AliasEntries map. A name may live in either (AliasEntries wins on
+	// conflict), so dedupe by name.
+	seen := map[string]struct{}{}
+	names := make([]string, 0, len(cfg.Aliases)+len(cfg.AliasEntries))
 	for k := range cfg.Aliases {
-		names = append(names, k)
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			names = append(names, k)
+		}
+	}
+	for k := range cfg.AliasEntries {
+		if _, ok := seen[k]; !ok {
+			seen[k] = struct{}{}
+			names = append(names, k)
+		}
 	}
 	sort.Strings(names)
 	return filterPrefix(names, toComplete), cobra.ShellCompDirectiveNoFileComp
