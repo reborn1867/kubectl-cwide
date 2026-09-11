@@ -1,8 +1,11 @@
 # Bug + fix design: default-printer render uses Wide=true, breaking value parity
 
-Status: **diagnosed, fix deferred to a compiler-in-the-loop session.** This is a
-follow-on to `fix/default-template-matches-kubectl-get` (which fixed the column
-*set*); this note is about a column *value* difference.
+Status: **implemented** on `fix/default-template-matches-kubectl-get`
+(commit adding `CustomColumnsPrinter.wantsWide`); awaiting CI/compile
+confirmation. This is a follow-on to the column-*set* parity fix on the same
+branch; this note is about a column *value* difference. The implementation
+follows the design below (render `Wide=false` unless a wide-only column is
+referenced); the diagnosis is retained for context.
 
 ## Symptom
 
