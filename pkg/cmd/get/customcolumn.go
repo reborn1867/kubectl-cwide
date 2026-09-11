@@ -436,6 +436,56 @@ func (s *CustomColumnsPrinter) needsDefaultPrinter() bool {
 	return false
 }
 
+// wantsWide reports whether the default-printer table must be generated with
+// Wide=true to satisfy this template — i.e. some $_defaultPrinterField column's
+// header exists only in the kind's wide column set. When every default-printer
+// column is a non-wide column (the usual case, and always so for the generated
+// default template), it returns false so rendering matches plain `kubectl get`.
+//
+// Falls back to false when the kind has no registered handler (e.g. CRDs, which
+// have no wide/non-wide distinction here) or when the generator is absent.
+func (s *CustomColumnsPrinter) wantsWide(kind string) bool {
+	if s.DefaultTableGenerator == nil {
+		return false
+	}
+	// Collect the headers this template pulls from the default printer.
+	var dpHeaders []string
+	for _, c := range s.Columns {
+		if c.FieldSpec == common.DefaultPrinterField ||
+			c.FieldSpec == fmt.Sprintf("{.%s}", common.DefaultPrinterField) {
+			dpHeaders = append(dpHeaders, c.Header)
+		}
+	}
+	if len(dpHeaders) == 0 {
+		return false
+	}
+
+	// Build the set of non-wide headers for this kind, normalized the way
+	// BuildYAMLTableColumnTemplate builds headers (spaces -> underscores,
+	// uppercased) so template headers compare equal to column names.
+	narrow := s.ResourceColumnDefinitionFiltered(kind, false)
+	if len(narrow) == 0 {
+		return false // unknown kind: nothing wide to worry about
+	}
+	nonWide := make(map[string]struct{}, len(narrow))
+	for _, col := range narrow {
+		nonWide[normalizeDefaultHeader(col.Name)] = struct{}{}
+	}
+	for _, h := range dpHeaders {
+		if _, ok := nonWide[normalizeDefaultHeader(h)]; !ok {
+			return true // references a wide-only (or unknown) column
+		}
+	}
+	return false
+}
+
+// normalizeDefaultHeader canonicalizes a header for comparison between a
+// template's column header and a kubectl column Name. Matches the transform in
+// BuildYAMLTableColumnTemplate: spaces to underscores, uppercased.
+func normalizeDefaultHeader(s string) string {
+	return strings.ToUpper(strings.ReplaceAll(s, " ", "_"))
+}
+
 func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []parser.Parser, out io.Writer) error {
 	columns := make([]string, len(parsers))
 	switch u := obj.(type) {
@@ -463,12 +513,19 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 		}
 	}
 
-	// Only build the default-printer table when a column actually needs it.
-	// Avoids per-object work for pure JSONPath/template templates and lets the
-	// printer run without a DefaultTableGenerator (e.g. RowSink capture).
+	// Only build the default-printer table when a column actually needs it
+	// (avoids per-object work for pure JSONPath/template templates and lets the
+	// printer run without a DefaultTableGenerator, e.g. RowSink capture), and
+	// build it at the width the template actually needs. Using Wide
+	// unconditionally diverged from `kubectl get` for the few printers that fold
+	// Wide into a base cell's VALUE (not just column count) — e.g. a
+	// LoadBalancer Service's EXTERNAL-IP is truncated with "..." under non-wide
+	// but shown in full under wide. wantsWide only asks for the wide table when
+	// a column references a wide-only column; otherwise it matches kubectl.
 	var t *metav1.Table
 	if s.needsDefaultPrinter() {
-		t, _ = s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: true})
+		wide := s.wantsWide(strings.ToLower(obj.GetObjectKind().GroupVersionKind().Kind))
+		t, _ = s.GenerateTable(obj, k8sprinters.GenerateOptions{NoHeaders: s.NoHeaders, Wide: wide})
 	}
 
 	for ix := range parsers {
