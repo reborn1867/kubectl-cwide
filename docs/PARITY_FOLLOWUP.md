@@ -36,6 +36,22 @@ unless `-t` is given" guarantee holds for built-in resources' column *set* but
 not for CRDs or for Service/Ingress EXTERNAL-IP *values*. Landing this branch
 completes the guarantee.
 
+## Coverage across render paths (verified by inspection)
+
+The fix lives in `CustomColumnsPrinter.printOneObject` (`wantsWide` +
+`needsDefaultPrinter`), and every `get` render path routes through it via
+`createPrinter` → `PrintObj`:
+
+- single-kind table (`list`),
+- multi-kind / alias-group blocks (`listMultiKind`, which renders via
+  `RowSink` + `PrintObj(info, io.Discard)` — the `needsDefaultPrinter` guard is
+  what keeps that generator-less path from panicking),
+- structured output (`emitStructured`: `-o csv|template-json|template-yaml`),
+- watch (`watch`).
+
+So the parity fix applies uniformly — no path has its own divergent
+`GenerateTable` call that would bypass the width decision.
+
 ## Suggested action
 
 Merge `fix/default-template-matches-kubectl-get` into `main` and include it in
