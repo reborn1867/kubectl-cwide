@@ -21,6 +21,17 @@ spec:
         os: linux
         arch: amd64
   - bin: kubectl-cwide
+    {{addURIAndSha "https://github.com/reborn1867/kubectl-cwide/releases/download/{{ .TagName }}/kubectl-cwide_Linux_arm64.tar.gz" .TagName }}
+    files:
+      - from: LICENSE
+        to: .
+      - from: kubectl-cwide
+        to: .
+    selector:
+      matchLabels:
+        os: linux
+        arch: arm64
+  - bin: kubectl-cwide
     {{addURIAndSha "https://github.com/reborn1867/kubectl-cwide/releases/download/{{ .TagName }}/kubectl-cwide_Darwin_x86_64.tar.gz" .TagName }}
     files:
       - from: LICENSE
