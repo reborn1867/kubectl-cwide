@@ -16,27 +16,27 @@ Reordering here reorders the loop.
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 1 | `template diff --against-file / --against-recipe` | T1 | M | in-progress | branch `feat/template-diff`. Local unified diff, no cluster contact. |
-| 2 | Land in-flight PRs (#31–34) | T4 | S | in-progress | scaffold-examples, metadata, lint-recursive, alias-conflict |
-| 3 | Cut v0.9.4 covering merged batch | T4 | S | todo | goreleaser tag after PR sweep lands |
+| 1 | `template diff --against-file / --against-recipe` | T1 | M | in-progress | branch `feat/template-diff` (rebased on main). Local unified diff, no cluster contact. Needs merge. |
+| 2 | Land in-flight PRs (#31–34) | T4 | S | done | scaffold-examples, metadata, lint-recursive, alias-conflict all on main |
+| 3 | Cut v0.9.4 covering merged batch | T4 | S | done | v0.9.4 and v0.9.5 both tagged; v0.9.5 also shipped filter/completion/cookbook/migration fixes + the built-in `get` parity fix |
 
 ## Milestone: v0.10.0 — power-user get
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 4 | `get --sort <col>` | T1 | M | todo | Reuses printer column data; stable Go sort keyed by rendered cell. |
-| 5 | `get --filter '<col><op><val>'` | T1 | M | todo | Small expr grammar over rendered cells. `==`, `!=`, `~=` (regex), numeric compare. |
-| 6 | `get -o json\|yaml\|csv` (template-driven) | T1 | M | todo | Same projection as the table, machine-readable. Blocks scripts. |
-| 7 | `get -w` with delta highlight | T1 | M | todo | ANSI color on cells that changed since previous tick. |
-| 8 | `--label-columns=...` / `--show-labels` | T2 | S | todo | kubectl parity; no template edit needed. |
+| 4 | `get --sort <col>` | T1 | M | done | shipped as `--sort-by` (v0.8.0). |
+| 5 | `get --filter '<col><op><val>'` | T1 | M | done | shipped as `--filter` (`=`/`!=`/`~`/`!~`, v0.8.0); operator-split fix in v0.9.5. |
+| 6 | `get -o json\|yaml\|csv` (template-driven) | T1 | M | done | shipped: `csv`, `template-json`, `template-yaml` (v0.8.0). |
+| 7 | `get -w` with delta highlight | T1 | M | in-progress | branch `feat/watch-delta-highlight` (rebased on main). Needs merge. |
+| 8 | `--label-columns=...` / `--show-labels` | T2 | S | in-progress | branch `feat/label-columns` (rebased on main). Needs merge. |
 
 ## Milestone: v0.11.0 — introspection and composition
 
 | # | Item | Tier | Effort | Status | Notes |
 |---|------|------|--------|--------|-------|
-| 9 | `explain <template>` / `explain <alias>` | T1 | M | todo | Where it came from, fields it reads, resources it touches. |
-| 10 | `get --explain-empty <col>` | T3 | M | todo | Print the JSONPath tried + keys actually present. Kills "why blank" tickets. |
-| 11 | `--merge-templates a,b` column composition | T2 | L | todo | Layered rendering — base + diagnostic overlay. Design: precedence rules for duplicate headers. |
+| 9 | `explain <template>` / `explain <alias>` | T1 | M | in-progress | implemented on branch `feat/explain-command` (rebased on main). Needs merge. |
+| 10 | `get --explain-empty <col>` | T3 | M | in-progress | implemented on branch `feat/explain-empty-wire` (core + wiring, rebased). Needs merge. |
+| 11 | `--merge-templates a,b` column composition | T2 | L | todo | Designed in `docs/design/merge-templates.md`; implementation deferred (helper re-parse needs a compiler in the loop). |
 | 12 | `template diff --against-live <r/n>` | T2 | L | todo | Render one object with two templates side by side. |
 | 13 | `template lint --against-crd <kind>` | T3 | M | todo | Fetch OpenAPI, verify `fieldSpec` paths resolve. Requires cluster. |
 
@@ -71,6 +71,14 @@ Reordering here reorders the loop.
 The loop pulls items top-to-bottom within a milestone, then across
 milestones. Anything `blocked` is skipped with a comment on why. `done`
 items stay for history — do not delete.
+
+**Current state:** v0.9.4 and v0.9.5 are released. Items 1/7/8/9/10 are
+code-complete on rebased branches awaiting merge (not new work). #11 is designed
+but deferred pending a compiler. The `get` parity work has a follow-up:
+`fix/default-template-matches-kubectl-get` carries the CRD NAME+AGE and
+Service/Ingress EXTERNAL-IP value fixes that missed the v0.9.5 tag (see
+`docs/PARITY_FOLLOWUP.md`). So the first item needing *fresh* implementation is
+#11, and the highest-leverage non-code action is merging the rebased branches.
 
 ## How to steer
 
