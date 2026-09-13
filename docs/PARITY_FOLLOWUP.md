@@ -52,6 +52,17 @@ The fix lives in `CustomColumnsPrinter.printOneObject` (`wantsWide` +
 So the parity fix applies uniformly — no path has its own divergent
 `GenerateTable` call that would bypass the width decision.
 
+## e2e compatibility (verified by inspection)
+
+The e2e suite (`hack/e2e-test.sh`, run by `.github/workflows/e2e.yml`) does
+**not** assert on `init`-generated default output — it deliberately writes its
+own `pod--v1/default.yaml` (comment at ~L95: "load without running 'init'"),
+and that template uses only `.metadata.name` + a `.status.phase` Go-template
+column, i.e. no `$_defaultPrinterField` columns. So `needsDefaultPrinter` and
+`wantsWide` both return false for it and the parity change doesn't alter its
+rendering. No existing e2e assertion depends on the old wide default output, so
+this fix will not break e2e CI.
+
 ## Suggested action
 
 Merge `fix/default-template-matches-kubectl-get` into `main` and include it in
