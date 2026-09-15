@@ -116,7 +116,18 @@ func runInit(cmd *cobra.Command, args []string) error {
 					JSONPath: ".metadata.name",
 				},
 			}
-			columns = append(columns, v.AdditionalPrinterColumns...)
+			if len(v.AdditionalPrinterColumns) > 0 {
+				columns = append(columns, v.AdditionalPrinterColumns...)
+			} else {
+				// Match `kubectl get <cr>`: when a CRD declares no
+				// additionalPrinterColumns, the apiserver's table convertor
+				// falls back to NAME + AGE. Mirror that so the default template
+				// matches kubectl instead of showing only NAME.
+				columns = append(columns, v1.CustomResourceColumnDefinition{
+					Name:     "Age",
+					JSONPath: ".metadata.creationTimestamp",
+				})
+			}
 
 			yamlContent, err := utils.BuildYAMLColumnTemplate(columns)
 			if err != nil {

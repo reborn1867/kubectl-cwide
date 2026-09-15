@@ -70,3 +70,41 @@ func TestFormatContent_ShortInputUnchanged(t *testing.T) {
 		t.Errorf("single-line input should be unchanged, got %q", got)
 	}
 }
+
+// TestBuildYAMLColumnTemplate verifies the CRD YAML template shape: each
+// CustomResourceColumnDefinition becomes a column whose header is the
+// uppercased Name and whose fieldSpec is the JSONPath verbatim.
+func TestBuildYAMLColumnTemplate(t *testing.T) {
+	cols := []v1.CustomResourceColumnDefinition{
+		{Name: "Name", JSONPath: ".metadata.name"},
+		{Name: "Phase", JSONPath: ".status.phase"},
+	}
+	out, err := BuildYAMLColumnTemplate(cols)
+	if err != nil {
+		t.Fatalf("BuildYAMLColumnTemplate: %v", err)
+	}
+	s := string(out)
+	for _, want := range []string{"header: NAME", "fieldSpec: .metadata.name", "header: PHASE", "fieldSpec: .status.phase"} {
+		if !strings.Contains(s, want) {
+			t.Errorf("output missing %q:\n%s", want, s)
+		}
+	}
+}
+
+// TestBuildYAMLColumnTemplate_CRDDefaultAgeFallback documents the shape init
+// emits for a CRD with no additionalPrinterColumns: NAME + AGE, matching
+// `kubectl get <cr>` (whose apiserver table convertor injects an Age column).
+func TestBuildYAMLColumnTemplate_CRDDefaultAgeFallback(t *testing.T) {
+	cols := []v1.CustomResourceColumnDefinition{
+		{Name: "Name", JSONPath: ".metadata.name"},
+		{Name: "Age", JSONPath: ".metadata.creationTimestamp"},
+	}
+	out, err := BuildYAMLColumnTemplate(cols)
+	if err != nil {
+		t.Fatalf("BuildYAMLColumnTemplate: %v", err)
+	}
+	s := string(out)
+	if !strings.Contains(s, "header: AGE") || !strings.Contains(s, "fieldSpec: .metadata.creationTimestamp") {
+		t.Errorf("CRD default template should carry an AGE column:\n%s", s)
+	}
+}
