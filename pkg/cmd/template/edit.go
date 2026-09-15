@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 
 	"github.com/kubectl-cwide/pkg/cmd/completions"
 	"github.com/kubectl-cwide/pkg/utils"
@@ -65,7 +67,13 @@ template name.`,
 			case fileExists(tplPath):
 				targetPath = tplPath
 			default:
-				return fmt.Errorf("template %q not found (tried %s and %s)", templateName, yamlPath, tplPath)
+				available := installedTemplateNames(files[0])
+				if len(available) == 0 {
+					return fmt.Errorf("template %q not found for %q — no templates installed in %s (run 'kubectl cwide init' or 'kubectl cwide template scaffold %s')",
+						templateName, resourceType, files[0], resourceType)
+				}
+				return fmt.Errorf("template %q not found for %q; available: %s",
+					templateName, resourceType, strings.Join(available, ", "))
 			}
 
 			editor := os.Getenv("EDITOR")
@@ -113,4 +121,37 @@ template name.`,
 func fileExists(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil
+}
+
+// installedTemplateNames returns the basenames (without extension) of every
+// .yaml/.yml/.tpl template in dir, sorted and deduplicated. A .yaml and a .tpl
+// sharing a basename collapse to one entry, matching how templates are resolved
+// (.yaml preferred over .tpl). Used to list options in "template not found"
+// errors so the user sees what's actually available.
+func installedTemplateNames(dir string) []string {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return nil
+	}
+	seen := map[string]struct{}{}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		name := e.Name()
+		switch {
+		case strings.HasSuffix(name, ".yaml"):
+			seen[strings.TrimSuffix(name, ".yaml")] = struct{}{}
+		case strings.HasSuffix(name, ".yml"):
+			seen[strings.TrimSuffix(name, ".yml")] = struct{}{}
+		case strings.HasSuffix(name, ".tpl"):
+			seen[strings.TrimSuffix(name, ".tpl")] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }
