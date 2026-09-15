@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -78,7 +79,11 @@ is specified.`,
 				}
 			}
 			if downloadURL == "" {
-				return fmt.Errorf("template %q not found in %s", templateName, remoteDir)
+				available := templateNamesFromEntries(files)
+				if len(available) == 0 {
+					return fmt.Errorf("template %q not found in %s (no templates published for %q)", templateName, remoteDir, resource)
+				}
+				return fmt.Errorf("template %q not found in %s; available: %s", templateName, remoteDir, strings.Join(available, ", "))
 			}
 
 			// Resolve local template path
@@ -185,5 +190,30 @@ func stampMarketplaceMetadata(data []byte, repo, ref string) []byte {
 	if err != nil {
 		return data
 	}
+	return out
+}
+
+// templateNamesFromEntries extracts template names (basenames without the
+// .yaml/.yml/.tpl extension) from a remote directory listing, deduplicated and
+// sorted. Used to show what a marketplace resource dir actually offers when the
+// requested template isn't found.
+func templateNamesFromEntries(entries []GitHubEntry) []string {
+	seen := map[string]struct{}{}
+	for _, e := range entries {
+		name := e.Name
+		switch {
+		case strings.HasSuffix(name, ".yaml"):
+			seen[strings.TrimSuffix(name, ".yaml")] = struct{}{}
+		case strings.HasSuffix(name, ".yml"):
+			seen[strings.TrimSuffix(name, ".yml")] = struct{}{}
+		case strings.HasSuffix(name, ".tpl"):
+			seen[strings.TrimSuffix(name, ".tpl")] = struct{}{}
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for n := range seen {
+		out = append(out, n)
+	}
+	sort.Strings(out)
 	return out
 }
