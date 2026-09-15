@@ -6,6 +6,10 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/cli-runtime/pkg/resource"
+	printersinternal "k8s.io/kubernetes/pkg/printers/internalversion"
+
+	"github.com/kubectl-cwide/pkg/common"
+	"github.com/kubectl-cwide/pkg/utils"
 )
 
 func nsPod(namespace, name string) *unstructured.Unstructured {
@@ -67,6 +71,41 @@ func TestWithNamespaceColumn_Idempotent(t *testing.T) {
 	p.WithNamespaceColumn()
 	if len(p.Headers) != 2 {
 		t.Fatalf("expected no duplicate NAMESPACE, headers = %v", p.Headers)
+	}
+}
+
+// TestWithNamespaceColumn_MixedWithDefaultPrinter verifies the prepended
+// NAMESPACE column composes with a $_defaultPrinterField column — the common
+// `kc cwide get <alias> -A` case where the alias resolves to an init-generated
+// default template. NAMESPACE (a plain JSONPath column) must stay leftmost and
+// render metadata.namespace regardless of the default-printer column beside it.
+func TestWithNamespaceColumn_MixedWithDefaultPrinter(t *testing.T) {
+	var rows [][]string
+	p := &CustomColumnsPrinter{
+		DefaultTableGenerator: utils.NewTableGenerator().With(printersinternal.AddHandlers),
+		Columns: []Column{
+			{Header: "NAME", FieldSpec: common.DefaultPrinterField},
+		},
+		Headers: []string{"NAME"},
+		RowSink: func(cols []string) { rows = append(rows, append([]string(nil), cols...)) },
+	}
+	p.WithNamespaceColumn()
+
+	if p.Headers[0] != "NAMESPACE" {
+		t.Fatalf("NAMESPACE must be leftmost even beside a default-printer column; headers=%v", p.Headers)
+	}
+	// The NAME default-printer column keeps needsDefaultPrinter true; the plain
+	// JSONPath NAMESPACE column doesn't change that.
+	if !p.needsDefaultPrinter() {
+		t.Errorf("needsDefaultPrinter should stay true (NAME is a default-printer column)")
+	}
+
+	if err := p.PrintObj(nsPod("monitoring", "prometheus-0"), io.Discard); err != nil {
+		t.Fatalf("PrintObj: %v", err)
+	}
+	// NAMESPACE cell (leftmost) renders metadata.namespace directly.
+	if len(rows) != 1 || rows[0][0] != "monitoring" {
+		t.Fatalf("NAMESPACE cell should render metadata.namespace first, got rows=%v", rows)
 	}
 }
 
