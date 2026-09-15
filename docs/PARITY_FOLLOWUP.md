@@ -1,5 +1,9 @@
 # Follow-up: complete the `kubectl get` parity fix (post-v0.9.5)
 
+> **Resolved in v0.9.6.** The two commits described below (CRD NAME+AGE
+> fallback and the `wantsWide` EXTERNAL-IP value fix) were merged into `main`
+> and released in v0.9.6. This document is retained for history.
+
 **v0.9.5 shipped the parity fix only partially.** The merge
 `8e32235 Merge fix/default-template-matches-kubectl-get for v0.9.5` landed at
 commit `7ed2b91`, which contains only the **built-in column-set** fix (default

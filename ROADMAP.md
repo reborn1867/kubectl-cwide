@@ -72,13 +72,13 @@ The loop pulls items top-to-bottom within a milestone, then across
 milestones. Anything `blocked` is skipped with a comment on why. `done`
 items stay for history — do not delete.
 
-**Current state:** v0.9.4 and v0.9.5 are released. Items 1/7/8/9/10 are
-code-complete on rebased branches awaiting merge (not new work). #11 is designed
-but deferred pending a compiler. The `get` parity work has a follow-up:
-`fix/default-template-matches-kubectl-get` carries the CRD NAME+AGE and
-Service/Ingress EXTERNAL-IP value fixes that missed the v0.9.5 tag (see
-`docs/PARITY_FOLLOWUP.md`). So the first item needing *fresh* implementation is
-#11, and the highest-leverage non-code action is merging the rebased branches.
+**Current state:** v0.9.4, v0.9.5, and v0.9.6 are released. v0.9.6 completed the
+`get` parity work (CRD NAME+AGE fallback + the `wantsWide` EXTERNAL-IP value fix
+that missed v0.9.5) and added the linux/arm64 krew platform. Items 7/8/9/10 are
+code-complete on rebased branches awaiting merge into a v0.10.0/v0.11.0 minor
+(they're features, not patch material). #11 is designed but deferred pending a
+compiler. So the first item needing *fresh* implementation is #11, and the
+highest-leverage non-code action is merging the remaining feature branches.
 
 ## How to steer
 
