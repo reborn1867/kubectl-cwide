@@ -45,6 +45,16 @@ func NewCmdAliasList() *cobra.Command {
 			}
 			sort.Strings(sorted)
 
+			// Heads-up line: spell out the full resource/KIND each alias
+			// resolves to, so a short or plural alias target (e.g. vw ->
+			// validatingwebhookconfigurations) is unambiguous at a glance
+			// before the table.
+			headsUp := make([]string, 0, len(sorted))
+			for _, alias := range sorted {
+				headsUp = append(headsUp, fmt.Sprintf("%s → %s", alias, config.ResolveAliasTarget(alias)))
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Aliases resolve to: %s\n\n", strings.Join(headsUp, ", "))
+
 			w := printers.GetNewTabWriter(cmd.OutOrStdout())
 			defer w.Flush()
 
