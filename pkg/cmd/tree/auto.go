@@ -41,7 +41,7 @@ func (o *TreeOptions) runAutoDiscover(ctx context.Context, root *TreeNode) error
 	targets := listableForOwnerScan(resourceLists, o.AllNamespaces)
 	if len(targets) == 0 {
 		// No listable resources means nothing to walk; render the root alone.
-		RenderTree(root, o.Out, o.MaxDepth, o.AllNamespaces)
+		RenderTree(root, o.Out, o.MaxDepth, MetaDisplay{ShowNamespace: o.AllNamespaces, ShowLabels: o.ShowLabels, ShowAnnotations: o.ShowAnnotations})
 		return nil
 	}
 
@@ -152,7 +152,7 @@ func (o *TreeOptions) runAutoDiscover(ctx context.Context, root *TreeNode) error
 		}
 	}
 
-	RenderTree(root, o.Out, o.MaxDepth, o.AllNamespaces)
+	RenderTree(root, o.Out, o.MaxDepth, MetaDisplay{ShowNamespace: o.AllNamespaces, ShowLabels: o.ShowLabels, ShowAnnotations: o.ShowAnnotations})
 	return nil
 }
 

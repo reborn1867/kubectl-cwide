@@ -49,7 +49,7 @@ func (o *TreeOptions) runReverse(ctx context.Context, start *TreeNode) error {
 		prev.Children = []*TreeNode{chain[i]}
 		prev = chain[i]
 	}
-	RenderTree(root, o.Out, o.MaxDepth, o.AllNamespaces)
+	RenderTree(root, o.Out, o.MaxDepth, MetaDisplay{ShowNamespace: o.AllNamespaces, ShowLabels: o.ShowLabels, ShowAnnotations: o.ShowAnnotations})
 	return nil
 }
 

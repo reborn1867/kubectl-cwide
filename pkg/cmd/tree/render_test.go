@@ -101,7 +101,7 @@ func TestFormatNode(t *testing.T) {
 		}},
 	}
 
-	result := formatNode(node, false)
+	result := formatNode(node, MetaDisplay{})
 	if !strings.HasPrefix(result, "Deployment/nginx") {
 		t.Errorf("expected prefix 'Deployment/nginx', got: %s", result)
 	}
@@ -123,11 +123,11 @@ func TestFormatNode_ShowNamespace(t *testing.T) {
 		Namespace: "prod",
 		Object:    &unstructured.Unstructured{Object: map[string]interface{}{}},
 	}
-	if got := formatNode(nsNode, true); !strings.HasPrefix(got, "Pod/prod/web-1") {
+	if got := formatNode(nsNode, MetaDisplay{ShowNamespace: true}); !strings.HasPrefix(got, "Pod/prod/web-1") {
 		t.Errorf("expected 'Pod/prod/web-1' prefix with showNamespace, got: %s", got)
 	}
 	// Without showNamespace the namespace must not appear.
-	if got := formatNode(nsNode, false); !strings.HasPrefix(got, "Pod/web-1") {
+	if got := formatNode(nsNode, MetaDisplay{}); !strings.HasPrefix(got, "Pod/web-1") {
 		t.Errorf("expected 'Pod/web-1' (no namespace) without showNamespace, got: %s", got)
 	}
 	// Cluster-scoped node (no namespace) stays unprefixed even with showNamespace.
@@ -136,8 +136,40 @@ func TestFormatNode_ShowNamespace(t *testing.T) {
 		Name:   "node-a",
 		Object: &unstructured.Unstructured{Object: map[string]interface{}{}},
 	}
-	if got := formatNode(clusterNode, true); !strings.HasPrefix(got, "Node/node-a") {
+	if got := formatNode(clusterNode, MetaDisplay{ShowNamespace: true}); !strings.HasPrefix(got, "Node/node-a") {
 		t.Errorf("cluster-scoped node should have no namespace prefix, got: %s", got)
+	}
+}
+
+// TestFormatNode_ShowLabelsAnnotations verifies --show-labels/--show-annotations
+// append sorted key=value pairs (and <none> when empty) to the node line.
+func TestFormatNode_ShowLabelsAnnotations(t *testing.T) {
+	node := &TreeNode{
+		GVK:  schema.GroupVersionKind{Kind: "Pod"},
+		Name: "web-1",
+		Object: &unstructured.Unstructured{Object: map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"labels":      map[string]interface{}{"app": "web", "tier": "front"},
+				"annotations": map[string]interface{}{"team": "sre"},
+			},
+		}},
+	}
+	got := formatNode(node, MetaDisplay{ShowLabels: true, ShowAnnotations: true})
+	if !strings.Contains(got, "labels=app=web,tier=front") {
+		t.Errorf("expected sorted labels in %q", got)
+	}
+	if !strings.Contains(got, "annotations=team=sre") {
+		t.Errorf("expected annotations in %q", got)
+	}
+
+	// Empty metadata → <none>.
+	bare := &TreeNode{
+		GVK:    schema.GroupVersionKind{Kind: "Pod"},
+		Name:   "bare",
+		Object: &unstructured.Unstructured{Object: map[string]interface{}{}},
+	}
+	if got := formatNode(bare, MetaDisplay{ShowLabels: true}); !strings.Contains(got, "labels=<none>") {
+		t.Errorf("expected labels=<none> for label-less node, got %q", got)
 	}
 }
 
@@ -183,7 +215,7 @@ func TestRenderTree(t *testing.T) {
 	}
 
 	var buf bytes.Buffer
-	RenderTree(root, &buf, 0, false)
+	RenderTree(root, &buf, 0, MetaDisplay{})
 	output := buf.String()
 
 	// Verify structure

@@ -12,6 +12,7 @@ import (
 	"os"
 	"reflect"
 	"regexp"
+	"sort"
 	"strings"
 	"text/template"
 
@@ -259,6 +260,12 @@ type Column struct {
 	// IsTemplate marks this column's FieldSpec as a Go template expression,
 	// bypassing the IsTemplate() heuristic check.
 	IsTemplate bool
+	// MetaKind, when non-empty, marks this as a synthesized metadata column
+	// rendered directly from the object rather than via FieldSpec. Valid values
+	// are "labels" and "annotations" (see --show-labels / --show-annotations);
+	// the cell is the object's labels/annotations formatted as sorted
+	// "k1=v1,k2=v2" ("<none>" when empty).
+	MetaKind string
 }
 
 // CustomColumnPrinter is a printer that knows how to print arbitrary columns
@@ -294,6 +301,56 @@ func (s *CustomColumnsPrinter) WithNamespaceColumn() {
 	nsCol := Column{Header: "NAMESPACE", FieldSpec: "{.metadata.namespace}"}
 	s.Columns = append([]Column{nsCol}, s.Columns...)
 	s.Headers = append([]string{"NAMESPACE"}, s.Headers...)
+}
+
+// WithMetaColumn appends a trailing LABELS or ANNOTATIONS column (kind is
+// "labels" or "annotations"), matching kubectl's --show-labels. The cell holds
+// the object's labels/annotations as sorted "k=v" pairs. No-op if a column with
+// that header already exists. Must be called before WithCustomTable, which
+// snapshots the header row.
+func (s *CustomColumnsPrinter) WithMetaColumn(kind string) {
+	header := "LABELS"
+	if kind == "annotations" {
+		header = "ANNOTATIONS"
+	}
+	for _, c := range s.Columns {
+		if strings.EqualFold(c.Header, header) {
+			return
+		}
+	}
+	s.Columns = append(s.Columns, Column{Header: header, MetaKind: kind})
+	s.Headers = append(s.Headers, header)
+}
+
+// formatMetaMap renders a labels/annotations map as kubectl's --show-labels
+// does: sorted "k1=v1,k2=v2". Empty map renders as "<none>".
+func formatMetaMap(m map[string]string) string {
+	if len(m) == 0 {
+		return "<none>"
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+m[k])
+	}
+	return strings.Join(parts, ",")
+}
+
+// objectMeta returns labels or annotations off any runtime.Object, tolerating
+// typed and unstructured objects. Returns nil when the accessor fails.
+func objectMeta(obj runtime.Object, kind string) map[string]string {
+	acc, err := meta.Accessor(obj)
+	if err != nil {
+		return nil
+	}
+	if kind == "annotations" {
+		return acc.GetAnnotations()
+	}
+	return acc.GetLabels()
 }
 
 // SelectColumns filters the printer's Columns/Headers to the named subset,
@@ -375,6 +432,12 @@ func (s *CustomColumnsPrinter) PrintObj(obj runtime.Object, out io.Writer) error
 	for ix, col := range s.Columns {
 		p := parser.NewFieldParser()
 		p.Header = col.Header
+		// Metadata columns (--show-labels/--show-annotations) are rendered from
+		// the object directly in printOneObject; they need no field parser.
+		if col.MetaKind != "" {
+			parsers[ix] = p
+			continue
+		}
 		p.IsAGE = col.Header == "AGE"
 		p.IsDefaultPrinterField = col.FieldSpec == fmt.Sprintf("{.%s}", common.DefaultPrinterField)
 
@@ -529,6 +592,13 @@ func (s *CustomColumnsPrinter) printOneObject(obj runtime.Object, parsers []pars
 	}
 
 	for ix := range parsers {
+		// Metadata columns (--show-labels/--show-annotations) render straight
+		// from the object's labels/annotations rather than via the parser.
+		if ix < len(s.Columns) && s.Columns[ix].MetaKind != "" {
+			columns[ix] = formatMetaMap(objectMeta(obj, s.Columns[ix].MetaKind))
+			continue
+		}
+
 		parser := parsers[ix]
 
 		col, err := parser.Parse(obj, t)
