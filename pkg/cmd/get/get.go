@@ -64,6 +64,10 @@ type GetOptions struct {
 	Output            string
 	SortColumn        string
 	FilterExprs       []string
+	// ShowLabels appends a LABELS column; ShowAnnotations an ANNOTATIONS column
+	// (kubectl-style --show-labels / --show-annotations).
+	ShowLabels      bool
+	ShowAnnotations bool
 
 	factory cmdutil.Factory
 	args    []string
@@ -784,6 +788,16 @@ func (o *GetOptions) createPrinter(infos []*resource.Info) (*CustomColumnsPrinte
 		}
 	}
 
+	// Append metadata columns after column selection (so -c never drops them)
+	// and before WithCustomTable (which snapshots the header row), matching
+	// kubectl's --show-labels / --show-annotations.
+	if o.ShowLabels {
+		printer.WithMetaColumn("labels")
+	}
+	if o.ShowAnnotations {
+		printer.WithMetaColumn("annotations")
+	}
+
 	if o.EnableCustomTable {
 		printer.WithCustomTable()
 	}
@@ -848,6 +862,8 @@ in <root>/<kind>-<group>-<version>/<template>.yaml (falling back to .tpl).`,
 		cobra.ShellCompDirectiveNoFileComp))
 	cmd.Flags().StringVar(&o.SortColumn, "sort-by", "", "Column header to sort rows by (case-insensitive). Numeric strings sort numerically.")
 	cmd.Flags().StringArrayVar(&o.FilterExprs, "filter", nil, "Filter rows by column values: COL=val, COL!=val, COL~regex, COL!~regex (repeatable, ANDed).")
+	cmd.Flags().BoolVar(&o.ShowLabels, "show-labels", false, "Append a LABELS column with each object's labels as key=value pairs.")
+	cmd.Flags().BoolVar(&o.ShowAnnotations, "show-annotations", false, "Append an ANNOTATIONS column with each object's annotations as key=value pairs.")
 	cmd.Flags().StringVarP(&o.Namespace, "namespace", "n", "", "If present, the namespace scope for this CLI request.")
 	cmd.Flags().StringVar(&o.Context, "context", "", "The name of the kubeconfig context to use.")
 	_ = cmd.RegisterFlagCompletionFunc("context", completions.KubeContexts)

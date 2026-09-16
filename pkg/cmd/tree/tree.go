@@ -39,10 +39,12 @@ type TreeOptions struct {
 	AllNamespaces     bool
 	Context           string
 
-	RulesFile    string
-	RelatedFlags []string
-	MaxDepth     int
-	Reverse      bool
+	RulesFile       string
+	RelatedFlags    []string
+	MaxDepth        int
+	Reverse         bool
+	ShowLabels      bool
+	ShowAnnotations bool
 
 	rootResource string
 	rootName     string
@@ -120,6 +122,8 @@ Binding types:
 	cmd.Flags().BoolVarP(&o.AllNamespaces, "all-namespaces", "A", false, "List across all namespaces")
 	cmd.Flags().IntVar(&o.MaxDepth, "max-depth", 0, "Maximum tree depth to render; 0 means unbounded. Cycles are always broken with a (cycle) marker.")
 	cmd.Flags().BoolVar(&o.Reverse, "reverse", false, "Show ancestors (via ownerReferences) instead of descendants.")
+	cmd.Flags().BoolVar(&o.ShowLabels, "show-labels", false, "Append each node's labels (key=value) to its line.")
+	cmd.Flags().BoolVar(&o.ShowAnnotations, "show-annotations", false, "Append each node's annotations (key=value) to its line.")
 
 	return cmd
 }
@@ -298,7 +302,11 @@ func (o *TreeOptions) Run(ctx context.Context) error {
 		}
 	}
 
-	RenderTree(rootNode, o.Out, o.MaxDepth, o.AllNamespaces)
+	RenderTree(rootNode, o.Out, o.MaxDepth, MetaDisplay{
+		ShowNamespace:   o.AllNamespaces,
+		ShowLabels:      o.ShowLabels,
+		ShowAnnotations: o.ShowAnnotations,
+	})
 	return nil
 }
 
