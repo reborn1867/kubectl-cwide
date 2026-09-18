@@ -1,0 +1,16 @@
+# Show pods with restart count and, when they're restarting, the reason.
+# Handy when a pod is CrashLoopBackOff and you want to know WHY without
+# running `kubectl describe pod`.
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: STATUS
+    fieldSpec: .status.phase
+  - header: RESTARTS
+    fieldSpec: .status.containerStatuses[0].restartCount
+  - header: LAST_REASON
+    fieldSpec: .status.containerStatuses[0].lastState.terminated.reason
+  - header: LAST_EXIT
+    fieldSpec: .status.containerStatuses[0].lastState.terminated.exitCode
+  - header: AGE
+    fieldSpec: .metadata.creationTimestamp

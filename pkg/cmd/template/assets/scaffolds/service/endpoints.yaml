@@ -1,0 +1,13 @@
+# Which service targets which pod-selector labels. Debugging "why is nothing
+# responding on my Service?" starts here.
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: TYPE
+    fieldSpec: .spec.type
+  - header: CLUSTER_IP
+    fieldSpec: .spec.clusterIP
+  - header: PORTS
+    fieldSpec: .spec.ports[0].port
+  - header: SELECTOR
+    template: '{{ range $k, $v := .spec.selector }}{{$k}}={{$v}} {{ end }}'

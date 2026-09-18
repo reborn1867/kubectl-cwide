@@ -1,0 +1,22 @@
+# For each PVC, show the bound PV and the node hosting it (via
+# spec.nodeAffinity). Uses cross-resource lookup — one API call per row,
+# so avoid --all-namespaces on giant clusters.
+columns:
+  - header: NAME
+    fieldSpec: .metadata.name
+  - header: STATUS
+    fieldSpec: .status.phase
+  - header: STORAGE
+    fieldSpec: .spec.resources.requests.storage
+  - header: VOLUME
+    fieldSpec: .spec.volumeName
+  - header: NODE
+    template: |
+      {{- $pv := lookup "v1" "PersistentVolume" "" .spec.volumeName -}}
+      {{- if $pv -}}
+        {{- range $pv.spec.nodeAffinity.required.nodeSelectorTerms -}}
+          {{- range .matchExpressions -}}
+            {{- if eq .key "kubernetes.io/hostname" -}}{{ index .values 0 }}{{- end -}}
+          {{- end -}}
+        {{- end -}}
+      {{- end -}}
