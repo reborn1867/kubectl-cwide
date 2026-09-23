@@ -3,6 +3,8 @@ package tree
 import (
 	"fmt"
 	"io"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/xlab/treeprint"
@@ -11,19 +13,26 @@ import (
 	"k8s.io/apimachinery/pkg/util/duration"
 )
 
+// MetaDisplay controls whether each tree node appends its labels/annotations.
+type MetaDisplay struct {
+	ShowNamespace   bool
+	ShowLabels      bool
+	ShowAnnotations bool
+}
+
 // RenderTree prints the tree to out using Unicode box-drawing characters.
 // maxDepth <= 0 means unbounded. Cycles (revisits of the same UID) are broken
-// with a "(cycle)" marker so the walk always terminates. When showNamespace is
-// true (e.g. under --all-namespaces), each node is prefixed with its namespace
-// so cross-namespace trees aren't ambiguous.
-func RenderTree(root *TreeNode, out io.Writer, maxDepth int, showNamespace bool) {
-	t := treeprint.NewWithRoot(formatNode(root, showNamespace))
+// with a "(cycle)" marker so the walk always terminates. When md.ShowNamespace
+// is true (e.g. under --all-namespaces), each node is prefixed with its
+// namespace; ShowLabels/ShowAnnotations append the node's labels/annotations.
+func RenderTree(root *TreeNode, out io.Writer, maxDepth int, md MetaDisplay) {
+	t := treeprint.NewWithRoot(formatNode(root, md))
 	visited := map[types.UID]bool{root.UID: true}
-	addChildren(t, root, visited, 1, maxDepth, showNamespace)
+	addChildren(t, root, visited, 1, maxDepth, md)
 	fmt.Fprint(out, t.String())
 }
 
-func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bool, depth, maxDepth int, showNamespace bool) {
+func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bool, depth, maxDepth int, md MetaDisplay) {
 	if maxDepth > 0 && depth > maxDepth {
 		if len(node.Children) > 0 {
 			branch.AddNode(fmt.Sprintf("... (%d more, --max-depth=%d)", len(node.Children), maxDepth))
@@ -32,44 +41,81 @@ func addChildren(branch treeprint.Tree, node *TreeNode, visited map[types.UID]bo
 	}
 	for _, child := range node.Children {
 		if child.UID != "" && visited[child.UID] {
-			branch.AddNode(formatNode(child, showNamespace) + "  (cycle)")
+			branch.AddNode(formatNode(child, md) + "  (cycle)")
 			continue
 		}
 		if child.UID != "" {
 			visited[child.UID] = true
 		}
 		if len(child.Children) > 0 {
-			sub := branch.AddBranch(formatNode(child, showNamespace))
-			addChildren(sub, child, visited, depth+1, maxDepth, showNamespace)
+			sub := branch.AddBranch(formatNode(child, md))
+			addChildren(sub, child, visited, depth+1, maxDepth, md)
 		} else {
-			branch.AddNode(formatNode(child, showNamespace))
+			branch.AddNode(formatNode(child, md))
 		}
 	}
 }
 
 // formatNode produces the display string for a tree line: Kind/name  status age.
-// When showNamespace is true and the node is namespaced, the name is prefixed
-// with "namespace/" so cross-namespace output is unambiguous.
-func formatNode(node *TreeNode, showNamespace bool) string {
+// When md.ShowNamespace is true and the node is namespaced, the name is
+// prefixed with "namespace/". ShowLabels/ShowAnnotations append the node's
+// labels/annotations as sorted "k=v" pairs.
+func formatNode(node *TreeNode, md MetaDisplay) string {
 	kind := node.GVK.Kind
 	status := summarizeStatus(node.Object)
 	age := resourceAge(node.Object)
 
 	name := node.Name
-	if showNamespace && node.Namespace != "" {
+	if md.ShowNamespace && node.Namespace != "" {
 		name = node.Namespace + "/" + node.Name
 	}
 
-	if status != "" && age != "" {
-		return fmt.Sprintf("%s/%s  %s  %s", kind, name, status, age)
+	var line string
+	switch {
+	case status != "" && age != "":
+		line = fmt.Sprintf("%s/%s  %s  %s", kind, name, status, age)
+	case status != "":
+		line = fmt.Sprintf("%s/%s  %s", kind, name, status)
+	case age != "":
+		line = fmt.Sprintf("%s/%s  %s", kind, name, age)
+	default:
+		line = fmt.Sprintf("%s/%s", kind, name)
 	}
-	if status != "" {
-		return fmt.Sprintf("%s/%s  %s", kind, name, status)
+
+	if md.ShowLabels {
+		line += "  labels=" + formatNodeMeta(node.Object, "labels")
 	}
-	if age != "" {
-		return fmt.Sprintf("%s/%s  %s", kind, name, age)
+	if md.ShowAnnotations {
+		line += "  annotations=" + formatNodeMeta(node.Object, "annotations")
 	}
-	return fmt.Sprintf("%s/%s", kind, name)
+	return line
+}
+
+// formatNodeMeta renders a node's labels or annotations as sorted "k=v" pairs
+// ("<none>" when empty), reading from the unstructured object's metadata.
+func formatNodeMeta(obj *unstructured.Unstructured, kind string) string {
+	if obj == nil {
+		return "<none>"
+	}
+	var m map[string]string
+	if kind == "annotations" {
+		m = obj.GetAnnotations()
+	} else {
+		m = obj.GetLabels()
+	}
+	if len(m) == 0 {
+		return "<none>"
+	}
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, k+"="+m[k])
+	}
+	return strings.Join(parts, ",")
 }
 
 // summarizeStatus extracts a compact status string from the object.

@@ -533,6 +533,25 @@ kubectl cwide get pod -c NAME,STATUS,AGE
 
 Column names are case-insensitive and matched against the header text emitted by the template. If a name doesn't match, the command errors out and lists the available headers.
 
+#### `--show-labels` / `--show-annotations` — append metadata columns
+
+Like `kubectl get --show-labels`, append a `LABELS` and/or `ANNOTATIONS` column
+holding each object's labels/annotations as sorted `key=value` pairs (`<none>`
+when empty). They're added after any `-c/--columns` selection, so a projected
+view still gets them, and they compose with `--sort-by`, `--filter`, and `-o`.
+
+```sh
+kubectl cwide get pod --show-labels
+kubectl cwide get pod -c NAME,STATUS --show-labels --show-annotations
+```
+
+`tree` supports the same two flags — there they append `labels=…` /
+`annotations=…` to each node's line:
+
+```sh
+kubectl cwide tree deployment/nginx --show-labels
+```
+
 #### `-o/--output` — native and template-driven output
 
 Two families of output formats:
