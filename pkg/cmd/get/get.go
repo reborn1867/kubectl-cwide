@@ -86,6 +86,19 @@ func NewGetOptions(streams genericiooptions.IOStreams) *GetOptions {
 	}
 }
 
+// noResourcesMessage builds the "nothing found" message. It must not claim a
+// namespace scope when the query wasn't namespaced: under --all-namespaces the
+// search spans the cluster, and cluster-scoped kinds (nodes, clusterroles, …)
+// have no namespace at all. In those cases match `kubectl`'s plain
+// "No resources found"; only mention a namespace for a genuinely namespaced,
+// single-namespace query.
+func (o *GetOptions) noResourcesMessage() string {
+	if o.AllNamespaces || o.Namespace == "" || anyClusterScoped(o.factory, o.args) {
+		return "No resources found."
+	}
+	return fmt.Sprintf("No resources found in %s namespace.", o.Namespace)
+}
+
 // resolveTemplatePrinter finds the template file (.yaml first, then .tpl) and creates the appropriate printer.
 // Shared helpers under <rootPath>/_shared/*.tpl are concatenated at the top of .tpl template bodies before parsing,
 // and merged into the `helpers` field of .yaml templates.
@@ -304,7 +317,7 @@ func (o *GetOptions) list() error {
 	}
 
 	if len(infos) == 0 {
-		fmt.Fprintf(o.ErrOut, "No resources found in %s namespace.\n", o.Namespace)
+		fmt.Fprintln(o.ErrOut, o.noResourcesMessage())
 		return nil
 	}
 
@@ -541,7 +554,7 @@ func (o *GetOptions) watch() error {
 	}
 
 	if len(infos) == 0 {
-		fmt.Fprintf(o.ErrOut, "No resources found in %s namespace.\n", o.Namespace)
+		fmt.Fprintln(o.ErrOut, o.noResourcesMessage())
 		return nil
 	}
 
